@@ -1,6 +1,6 @@
 # A posteriori error estimation
 
-## Spatial refinement
+## Residual-based error estimation
 Spatial error estimation refers to classical residual-based error estimation
 for the zero-th multi index that refers to the mean value.
 Stochastic error control has to estimate which stochastic mode needs to be refined

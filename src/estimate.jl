@@ -40,15 +40,14 @@ $(TYPEDSIGNATURES)
 
 computes the residual-based a posteriori error estimator for the current solution vector `sol`
 for the given model problem and stochastic coefficient `C` and returns:
-- eta4modes = array with total error estimators for each multi-index (corresponding to the enriched set of multi-indices
-with the current active modes coming first)
-- eta4cell = array with total error estimators for each cell in grid (for spatial refinement)
-- multi_indices_extended = enriched set of multi-indices used for the computations
-- f4modes
+- `eta4modes` = array with total error estimators for each multi-index (corresponding to the enriched set of multi-indices with the current active modes coming first)
+- `eta4cell` = array with total error estimators for each cell in grid (for spatial refinement)
+- `multi_indices_extended = enriched set of multi-indices used for the computations
 
 """
 function estimate(::Type{AbstractModelProblem}, sol::SGFEVector, C::AbstractStochasticCoefficient; kwargs...)
-    return @error "no error estimator for the model problem type available"
+    @error "no error estimator for the model problem type available"
+    return Vector{Float64}, Matrix{Float64}, [[0]]
 end
 
 

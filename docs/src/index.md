@@ -5,7 +5,7 @@ model problems involving KLE of stochastic coefficients. The rather huge systems
 structure and are solved by iterative solvers. A posteriori error estimators steer the spatial
 and stochastic refinement.
 
-The spatial discretization is based on the finite element package [ExtendableFEM.jl](https://github.com/WIAS-PDELib/ExtendableFEM.jl) and [ExtendableFEMBase.jl](https://github.com/WIAS-PDELib/ExtendableFEMBase.jl)
+The spatial discretization is based on the finite element package [ExtendableFEM.jl](https://github.com/WIAS-PDELib/ExtendableFEM.jl)/[ExtendableFEMBase.jl](https://github.com/WIAS-PDELib/ExtendableFEMBase.jl)
 
 
 ## References
