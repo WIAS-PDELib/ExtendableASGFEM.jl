@@ -54,4 +54,3 @@ DoubleFloats = "497a8b3b-efae-58df-a0af-a86822472b78"
 
 [targets]
 test = ["Aqua", "ExplicitImports", "DoubleFloats", "Test"]
-

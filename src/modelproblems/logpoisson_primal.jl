@@ -50,14 +50,14 @@ function deterministic_problem2(::Type{LogTransformedPoissonProblemPrimal}, C::A
     assign_unknown!(PD, u)
     assign_operator!(PD, BilinearOperator([grad(u)]; bonus_quadorder = bonus_quadorder_a))
     assign_operator!(PD, BilinearOperator(kernel_convection!, [id(1)], [grad(1)]; factor = -1, bonus_quadorder = bonus_quadorder_a))
-		
+
     if rhs !== nothing
         f_eval = zeros(Float64, 1)
         function kernel_fexp(result, qpinfo)
             result[1] = 0
             expa!(result, qpinfo.x, sample_pointer)
             rhs(f_eval, qpinfo.x)
-            result[1] = result[1] * f_eval[1]
+            return result[1] = result[1] * f_eval[1]
         end
         assign_operator!(PD, LinearOperator(kernel_fexp, [id(1)]; bonus_quadorder = max(bonus_quadorder_a, bonus_quadorder_f)))
     end
@@ -68,33 +68,34 @@ end
 
 ## solver for stochastic Galerkin problem
 function solve!(
-    ::Type{LogTransformedPoissonProblemPrimal},
-    sol::SGFEVector,                        ## target SGFEM vector
-    C::AbstractStochasticCoefficient;       ## stochastic coefficient a
-    bonus_quadorder_a = 2,                  ## additional quadrature order for grad(am)
-    bonus_quadorder_f = 0,                  ## additional quadrature order for rhs f
-    rhs = nothing,
-    debug = false,
-	use_iterative_solver = true)
+        ::Type{LogTransformedPoissonProblemPrimal},
+        sol::SGFEVector,                        ## target SGFEM vector
+        C::AbstractStochasticCoefficient;       ## stochastic coefficient a
+        bonus_quadorder_a = 2,                  ## additional quadrature order for grad(am)
+        bonus_quadorder_f = 0,                  ## additional quadrature order for rhs f
+        rhs = nothing,
+        debug = false,
+        use_iterative_solver = true
+    )
 
-	## create FESpace for space discretisation
-	FES = sol.FES_space[1]
+    ## create FESpace for space discretisation
+    FES = sol.FES_space[1]
     TensorBasis = sol.TB
     xgrid = FES.xgrid
     dim = size(xgrid[Coordinates], 1)
 
-	## assemble Laplacian: A = (∇u,∇v)
+    ## assemble Laplacian: A = (∇u,∇v)
     A = FEMatrix(FES, FES)
     assemble!(A, BilinearOperator([grad(1)]; factor = 1))
 
     ## assemble convection term: N[m] = - (∇a[m] v, ∇u)
-	N = []
-	for m = 1 : maxlength_multiindices(TensorBasis)
-		Nm = FEMatrix(FES, FES)
-		assemble!(Nm, BilinearOperator(get_gradam_x_sigma(dim, m, C), [id(1)], [grad(1)]; factor = -1, bonus_quadorder = bonus_quadorder_a))
-		push!(N, Nm)
-	end
-    
+    N = []
+    for m in 1:maxlength_multiindices(TensorBasis)
+        Nm = FEMatrix(FES, FES)
+        assemble!(Nm, BilinearOperator(get_gradam_x_sigma(dim, m, C), [id(1)], [grad(1)]; factor = -1, bonus_quadorder = bonus_quadorder_a))
+        push!(N, Nm)
+    end
+
     ## assemble right-hand side: b[μ] = (λ[μ], v)
     if rhs !== nothing
         expa_PCE!, lambda_μ! = expa_PCE_mop(TensorBasis, C; factor = -1.0)
@@ -103,18 +104,18 @@ function solve!(
             result[1] = 0
             lambda_μ!(result, qpinfo.x, qpinfo.params[1])
             rhs(f_eval, qpinfo.x)
-            result[1] = result[1] * f_eval[1] # --> (λ_μ f, •)
+            return result[1] = result[1] * f_eval[1] # --> (λ_μ f, •)
         end
         b = []
         nmodes = num_multiindices(TensorBasis)
-        for m = 1 : nmodes
+        for m in 1:nmodes
             bm = FEVector(FES)
             assemble!(bm, LinearOperator(kernel_fexp, [id(1)]; params = [m], bonus_quadorder = bonus_quadorder_f))
             #@info "b[$m] = $(bm.entries)"
             push!(b, bm)
             if debug
                 Ifλ = FEVector(FES)
-                interpolate!(Ifλ[1], kernel_fexp;  params = [m])
+                interpolate!(Ifλ[1], kernel_fexp; params = [m])
                 println(stdout, unicode_scalarplot(Ifλ[1]; title = "f*λ[μ] for m=$m"))
             end
         end
@@ -126,11 +127,11 @@ function solve!(
     G = TensorBasis.G
 
     ## solve
-	if use_iterative_solver
-		@time bdofs = solve_logpoisson_primal!(sol,A,FEMatrix(FES),N,b,G,nmodes,1)
-	else
-		@time bdofs = solve_logpoisson_primal_full!(sol,A,FEMatrix(FES),N,b,G,nmodes,1)
-	end
+    if use_iterative_solver
+        @time bdofs = solve_logpoisson_primal!(sol, A, FEMatrix(FES), N, b, G, nmodes, 1)
+    else
+        @time bdofs = solve_logpoisson_primal_full!(sol, A, FEMatrix(FES), N, b, G, nmodes, 1)
+    end
 
     return bdofs
 end

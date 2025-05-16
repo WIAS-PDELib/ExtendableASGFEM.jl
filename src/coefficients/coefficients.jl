@@ -1,4 +1,3 @@
-
 """
 $(TYPEDEF)
 
@@ -18,8 +17,6 @@ abstract type AbstractStochasticCoefficient{T} end
 include("cosinus.jl")
 
 
-
-
 """
 $(TYPEDSIGNATURES)
 
@@ -34,9 +31,9 @@ into result (a vector of length 1).
 """
 function get_a!(SC::AbstractStochasticCoefficient{T}; factor = 1) where {T}
     eval_am = zeros(T, 1)
-    function closure(result, x, y)
+    return function closure(result, x, y)
         result[1] = meanvalue(SC) # a[0]
-        for m = 1 : length(y)
+        for m in 1:length(y)
             get_am!(eval_am, x, m, SC)
             result[1] += y[m] * eval_am[1]
         end
@@ -60,8 +57,8 @@ into result (a vector of same length as x).
 """
 function get_grada!(SC::AbstractStochasticCoefficient{T}; factor = 1) where {T}
     eval_gradam = zeros(T, 2)
-    function closure(result, x, y)
-        for m = 1 : length(y)
+    return function closure(result, x, y)
+        for m in 1:length(y)
             get_gradam!(eval_gradam, x, m, SC)
             result .+= y[m] * eval_gradam
         end
@@ -85,7 +82,7 @@ into result (a vector of length 1).
 """
 function get_expa!(SC::AbstractStochasticCoefficient; factor = 1)
     eval_a! = get_a!(SC)
-    function closure(result, x, y)
+    return function closure(result, x, y)
         eval_a!(result, x, y)
         result[1] = exp(factor * result[1])
         return nothing
@@ -105,7 +102,7 @@ function plot_am(xgrid::ExtendableGrid, m, SC::AbstractStochasticCoefficient; Pl
     FES = FESpace{H1P1{1}}(xgrid)
     I = FEVector(FES)
     ExtendableFEMBase.interpolate!(I[1], (result, qpinfo) -> get_am!(result, qpinfo.x, m, SC))
-    scalarplot(xgrid, I.entries; Plotter, kwargs...)
+    return scalarplot(xgrid, I.entries; Plotter, kwargs...)
 end
 
 
@@ -122,7 +119,7 @@ and input is expected to be some scalar quantity).
 
 """
 function get_gradam_x_u(m, SC::AbstractStochasticCoefficient{T}) where {T}
-    function closure(result, input, qpinfo)
+    return function closure(result, input, qpinfo)
         get_gradam!(result, qpinfo.x, m, SC)
         result .*= input[1]
         return nothing
@@ -141,7 +138,7 @@ that evaluates `a_m(qpinfo.x) input`
 
 """
 function get_am_x(m, SC::AbstractStochasticCoefficient{T}) where {T}
-    function closure(result, input, qpinfo)
+    return function closure(result, input, qpinfo)
         get_am!(result, qpinfo.x, m, SC)
         result .= result[1] * input
         return nothing
@@ -163,8 +160,8 @@ quantity of same length).
 """
 ## helper function that dot-products grad(a_m) with a vector valued input
 function get_gradam_x_sigma(dim, m, SC::AbstractStochasticCoefficient{T}) where {T}
-    ∇a::Array{T,1} = zeros(T, dim)
-    function closure(result, input, qpinfo)
+    ∇a::Array{T, 1} = zeros(T, dim)
+    return function closure(result, input, qpinfo)
         get_gradam!(∇a, qpinfo.x, m, SC)
         result[1] = dot(∇a, input)
         return nothing
@@ -186,10 +183,10 @@ quantity of same length).
 
 """
 function get_grada_x_sigma(dim, SC::AbstractStochasticCoefficient{T}, y) where {T}
-    ∇a::Array{T,1} = zeros(T, dim)
-    eval_gradam::Array{T,1} = zeros(T, dim)
-    function closure(result, input, qpinfo)
-        for m = 1 : length(y)
+    ∇a::Array{T, 1} = zeros(T, dim)
+    eval_gradam::Array{T, 1} = zeros(T, dim)
+    return function closure(result, input, qpinfo)
+        for m in 1:length(y)
             get_gradam!(eval_gradam, qpinfo.x, m, SC)
             ∇a .+= y[m] * eval_gradam
         end
@@ -197,7 +194,6 @@ function get_grada_x_sigma(dim, SC::AbstractStochasticCoefficient{T}, y) where {
         return nothing
     end
 end
-
 
 
 """
@@ -214,12 +210,12 @@ to the multi-indices `μ` and their associated orthogonal basis functions `H_μ`
 
 """
 function expa_PCE_mop(TB::TensorizedBasis{T, ONBType}, SC::AbstractStochasticCoefficient{T}; N_truncate::Int = maxm(SC), factor = 1) where {T, ONBType}
-    eval_am::Array{T,1} = zeros(T,1)
+    eval_am::Array{T, 1} = zeros(T, 1)
     eval_amu_storage::T = 0.0
     eval_Hmu_storage::T = 0.0
     multi_indices = TB.multi_indices
     M = length(multi_indices[1])
-    N = maximum([maximum(multi_indices[k]) for k = 1 : length(multi_indices)])
+    N = maximum([maximum(multi_indices[k]) for k in 1:length(multi_indices)])
     eval_aHmu_storage::T = 0.0
     mu_fac_storage::T = 0
     nmodes::Int = length(multi_indices)
@@ -230,19 +226,19 @@ function expa_PCE_mop(TB::TensorizedBasis{T, ONBType}, SC::AbstractStochasticCoe
 
         ## calculate exp(1/2 ∑a_m^2)
         sum_am = 0
-        for m = 1 : N_truncate
-            get_am!(eval_am,x,m,SC) # gives a_m
+        for m in 1:N_truncate
+            get_am!(eval_am, x, m, SC) # gives a_m
             sum_am += eval_am[1]^2
         end
-        sum_am = exp(sum_am/2) * exp(meanvalue(SC)*factor)
-        
+        sum_am = exp(sum_am / 2) * exp(meanvalue(SC) * factor)
+
         ## evaluate a_mu
         eval_amu::Float64 = eval_amu_storage
         mu_fac::Float64 = mu_fac_storage
         eval_amu = 1.0
         mu_fac = 1
-        for d = 1 : length(multi_indices[μ])
-            get_am!(eval_am,x,d,SC)
+        for d in 1:length(multi_indices[μ])
+            get_am!(eval_am, x, d, SC)
             eval_amu *= eval_am[1]^multi_indices[μ][d]
             mu_fac *= factorial(multi_indices[μ][d])
         end
@@ -260,15 +256,15 @@ function expa_PCE_mop(TB::TensorizedBasis{T, ONBType}, SC::AbstractStochasticCoe
         ## evaluate all op basis polynomials once
         set_sample!(TB, y)
 
-        for μ = 1 : nmodes
-           ## evaluate H_mu
-           eval_Hmu = evaluate(TB, μ)
+        for μ in 1:nmodes
+            ## evaluate H_mu
+            eval_Hmu = evaluate(TB, μ)
 
-           ## evaluate lambda_mu := (e^a, H_μ) (coefficient for H_μ)
-           lambda_mu(result, x, μ)
-           #@show multi_indices[μ], result[1]
+            ## evaluate lambda_mu := (e^a, H_μ) (coefficient for H_μ)
+            lambda_mu(result, x, μ)
+            #@show multi_indices[μ], result[1]
 
-           eval_aHmu += result[1] * eval_Hmu
+            eval_aHmu += result[1] * eval_Hmu
         end
 
         result[1] = eval_aHmu
@@ -279,30 +275,27 @@ function expa_PCE_mop(TB::TensorizedBasis{T, ONBType}, SC::AbstractStochasticCoe
 end
 
 
-
-
 ###### testing area
-struct SingleStochasticCoefficient{T, k} <: AbstractStochasticCoefficient{T} 
+struct SingleStochasticCoefficient{T, k} <: AbstractStochasticCoefficient{T}
     coefficient::T
 end
 
 meanvalue(SC::SingleStochasticCoefficient) = 0
-maxm(SC::SingleStochasticCoefficient{T,k}) where{T,k} = k
+maxm(SC::SingleStochasticCoefficient{T, k}) where {T, k} = k
 
-function get_am!(result, x, m, SC::SingleStochasticCoefficient{T,k}) where {T,k}
-    if m == k
+function get_am!(result, x, m, SC::SingleStochasticCoefficient{T, k}) where {T, k}
+    return if m == k
         result[1] = SC.coefficient * x[1]
     else
         result[1] = 0
     end
 end
 
-function get_gradam!(result, x, m, SC::SingleStochasticCoefficient{T,k}) where {T,k}
-    if m == k
+function get_gradam!(result, x, m, SC::SingleStochasticCoefficient{T, k}) where {T, k}
+    return if m == k
         result[1] = SC.coefficient
         result[2] = 0
     else
         fill!(result, 0)
     end
 end
-

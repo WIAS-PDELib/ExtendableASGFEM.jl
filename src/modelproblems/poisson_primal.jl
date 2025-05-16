@@ -1,4 +1,3 @@
-
 """
 $(TYPEDEF)
 
@@ -34,31 +33,32 @@ end
 
 ## solver for stochastic Galerkin problem
 function solve!(
-    ::Type{PoissonProblemPrimal},
-    sol::SGFEVector,                        ## target SGFEM vector
-    C::AbstractStochasticCoefficient;       ## stochastic coefficient a
-    bonus_quadorder_a = 2,                  ## additional quadrature order for grad(am)
-    bonus_quadorder_f = 0,                  ## additional quadrature order for rhs f
-    rhs = nothing,
-    debug = false,
-	use_iterative_solver = true)
+        ::Type{PoissonProblemPrimal},
+        sol::SGFEVector,                        ## target SGFEM vector
+        C::AbstractStochasticCoefficient;       ## stochastic coefficient a
+        bonus_quadorder_a = 2,                  ## additional quadrature order for grad(am)
+        bonus_quadorder_f = 0,                  ## additional quadrature order for rhs f
+        rhs = nothing,
+        debug = false,
+        use_iterative_solver = true
+    )
 
-	## create FESpace for space discretisation
-	FES = sol.FES_space[1]
+    ## create FESpace for space discretisation
+    FES = sol.FES_space[1]
     TB = sol.TB
     xgrid = FES.xgrid
     dim = size(xgrid[Coordinates], 1)
 
-	## Laplacian: A = (a∇u,∇v) with building blocks Am = (a_m∇u,∇v)
+    ## Laplacian: A = (a∇u,∇v) with building blocks Am = (a_m∇u,∇v)
     A0 = FEMatrix(FES, FES)
     assemble!(A0, BilinearOperator(get_am_x(0, C), [grad(1)], [grad(1)]; bonus_quadorder = bonus_quadorder_a))
-	A = []
-	for m = 1 : maxlength_multiindices(TB)
-		Am = FEMatrix(FES, FES)
-		assemble!(Am, BilinearOperator(get_am_x(m, C), [grad(1)], [grad(1)]; bonus_quadorder = bonus_quadorder_a))
-		push!(A, Am)
-	end
-    
+    A = []
+    for m in 1:maxlength_multiindices(TB)
+        Am = FEMatrix(FES, FES)
+        assemble!(Am, BilinearOperator(get_am_x(m, C), [grad(1)], [grad(1)]; bonus_quadorder = bonus_quadorder_a))
+        push!(A, Am)
+    end
+
     ## assemble right-hand side: b = (f, v)
     if rhs !== nothing
         b = FEVector(FES)
@@ -68,11 +68,11 @@ function solve!(
     end
 
     ## solve
-	if use_iterative_solver
-		@time bdofs = solve_primal!(sol,A0,A,b,TB.G,TB.nmodes,1)
-	else
-		@time bdofs = solve_full_primal!(sol,A0,A,b,TB.G,TB.nmodes,1)
-	end
+    if use_iterative_solver
+        @time bdofs = solve_primal!(sol, A0, A, b, TB.G, TB.nmodes, 1)
+    else
+        @time bdofs = solve_full_primal!(sol, A0, A, b, TB.G, TB.nmodes, 1)
+    end
 
     return bdofs
 end

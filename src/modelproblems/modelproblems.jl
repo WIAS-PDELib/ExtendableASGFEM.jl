@@ -9,11 +9,12 @@ is communicated as well as initial data for the iterative solver.
 
 """
 function solve!(
-    ::Type{AbstractModelProblem},
-    sol::SGFEVector,                        ## target SGFEM vector
-    C::AbstractStochasticCoefficient;
-    kwargs...)
-    @error "This Model problem seems to have no solver implemented!"
+        ::Type{AbstractModelProblem},
+        sol::SGFEVector,                        ## target SGFEM vector
+        C::AbstractStochasticCoefficient;
+        kwargs...
+    )
+    return @error "This Model problem seems to have no solver implemented!"
 end
 
 include("logpoisson_primal.jl")
