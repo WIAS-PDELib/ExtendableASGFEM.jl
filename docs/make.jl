@@ -1,20 +1,14 @@
 using Documenter
 using ExtendableASGFEM
 
-push!(LOAD_PATH,"../src/")
-
 makedocs(
 		modules = [ExtendableASGFEM],
 		sitename = "ExtendableASGFEM.jl",
 		authors = "Christian Merdon, Martin Eigel",
-		repo = "https://lab.wias-berlin.de/merdon/ASGFEMJulia",
-		# repolink = "https://lab.wias-berlin.de/merdon/ASGFEMJulia", 
-		format = Documenter.HTML(; mathengine = MathJax3()),
-		clean = false,
-		source  = "src",
-		build   = "build",
+		format = Documenter.HTML(; repolink = "https://github.com/WIAS-PDELib/ExtendableASGFEM.jl", mathengine = MathJax3()),
+        clean = false,
 		checkdocs = :all,
-		warnonly = true,
+		warnonly = false,
 		doctest = true,
 		pages = [
 			"Home" => "index.md"
@@ -38,3 +32,8 @@ makedocs(
 			]
 		],
 	)
+
+
+deploydocs(
+    repo = "github.com/WIAS-PDELib/ExtendableASGFEM.jl",
+)

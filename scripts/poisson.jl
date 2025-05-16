@@ -2,12 +2,17 @@
 
 ([source code](SOURCE_URL))
 
-# runs AFEM loop for stochastic Poisson problem and saves results to data folder
+runs AFEM loop for stochastic Poisson problem, save/load results to/from data folder, plot results
+ 
+main usage:
+- run experiment: run(; problem = problem, kwargs...)
+- load results  : show_results(; kwargs...)
+- produce plots : produce_plots(; kwargs...)
 
 possible values for problem are
-PoissonProblemPrimal = Poisson problem with linear coefficient a
-LogTransformedPoissonProblemPrimal = log-transformed Poisson problem with exponential coefficient exp(a)
-LogTransformedPoissonProblemDual = dual formulation
+- PoissonProblemPrimal = Poisson problem with linear coefficient a
+- LogTransformedPoissonProblemPrimal = log-transformed Poisson problem with exponential coefficient exp(a)
+- LogTransformedPoissonProblemDual = dual formulation
 
 =#
 
@@ -64,7 +69,7 @@ default_args = Dict(
     "θ_spatial" => 0.5,
     "factor_tail" => 1,
     "tail_extension" => [10,2], # for [0] mode, and all others
-    "maxdofs" => 1e5,
+    "maxdofs" => 1e4,
     "initial_modes" => [[0]],
     "nsamples" => 150,
     "use_equilibration_estimator" => false,

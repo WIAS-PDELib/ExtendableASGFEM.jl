@@ -13,7 +13,7 @@ the subresiduals that are associated to each multi-index
 
 ```@autodocs
 Modules = [ExtendableASGFEM]
-Pages = ["estimators.jl"]
+Pages = ["estimate.jl"]
 Order   = [:type, :function]
 ```
 
@@ -28,5 +28,18 @@ Here are some methods that help with enriching the set of multi-indices.
 ```@autodocs
 Modules = [ExtendableASGFEM]
 Pages = ["mopcontrol.jl"]
+Order   = [:type, :function]
+```
+
+## Monte carlo sampling estimator
+
+There is also a hierarchical Monte carlo error estimator available that
+compares the solution with a higher order discrete solution for sampled
+deterministic problems. This is merely intended as a way to compute the
+reference error to assess the efficiency of the residual-based error estimator.
+
+```@autodocs
+Modules = [ExtendableASGFEM]
+Pages = ["sampling_error.jl"]
 Order   = [:type, :function]
 ```
