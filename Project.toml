@@ -29,7 +29,7 @@ Distributions = "0.25.120"
 DocStringExtensions = "0.9.4"
 DoubleFloats = "1.4.3"
 Krylov = "0.10.1"
-LinearAlgebra = "1.11"
+LinearAlgebra = "1.9"
 ExtendableFEM = "1.1"
 ExtendableFEMBase = "1.1"
 ExtendableGrids = "1.13"
@@ -42,7 +42,7 @@ SparseArrays = "1.9"
 SpecialFunctions = "2.5.1"
 StaticArrays = "1.9.13"
 Test = "1.11"
-julia = "^1.10"
+julia = "^1.9"
 
 
 [extras]
