@@ -6,13 +6,14 @@ makedocs(
     sitename = "ExtendableASGFEM.jl",
     authors = "Christian Merdon, Martin Eigel",
     format = Documenter.HTML(; repolink = "https://github.com/WIAS-PDELib/ExtendableASGFEM.jl", mathengine = MathJax3()),
-    clean = false,
+    clean = true,
     checkdocs = :all,
     warnonly = false,
     doctest = true,
     pages = [
         "Home" => "index.md"
-        "KLE expansions" => [
+        "Model problems" => [
+            "modelproblems.md",
             "coefficients.md",
         ]
         "Stochastic discretization" => [
@@ -20,9 +21,8 @@ makedocs(
             "onbasis.md",
             "tonbasis.md",
         ]
-        "Solvers" => [
-            "sgfevector.md",
-            "modelproblems.md",
+        "Solving" => [
+            "solvers.md",
             "estimators.md",
         ]
         "Plotting" => [
