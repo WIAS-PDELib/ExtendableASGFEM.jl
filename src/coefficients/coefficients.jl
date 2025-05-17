@@ -3,13 +3,13 @@ $(TYPEDEF)
 
 A stochastic coefficient is assumed to have the Karhunen-Loeve expansion form
 
-    a(x,y) = a_0(x) + ∑_m y_m a_m(x)
+    ``a(x,y) = a_0(x) + ∑_m y_m a_m(x)``
 
-with (centered independent) random variables `y_m` and
-basis functions `a_m(x)` that need to be specified (together with their gradients)
-and expectation value `a_0`
+with (centered independent) random variables ``y_m`` and
+basis functions ``a_m(x)`` that need to be specified (together with their gradients)
+and expectation value ``a_0``
 (in general they steam from a spectral analysis of the covariance operator
-of a).
+of ``a``).
 
 
 """

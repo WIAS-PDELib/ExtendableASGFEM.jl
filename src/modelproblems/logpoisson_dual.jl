@@ -1,7 +1,7 @@
 """
 $(TYPEDEF)
 
-Dual log-transformed formulation of the Poisson problem with exponential stochastic coefficient.
+Dual log-transformed formulation of the Poisson problem with exponential stochastic coefficient (WIP).
 """
 abstract type LogTransformedPoissonProblemDual <: AbstractModelProblem end
 

@@ -1,7 +1,14 @@
 """
 $(TYPEDEF)
 
-Log-transformed formulation of the Poisson problem with exponential stochastic coefficient.
+Poisson problem with exponential stochastic coefficient ``e^a`` that seeks ``u`` such that
+
+``-\\mathrm{div}(e^a(y,x) \\nabla u(y,x)) = f(x) \\quad \\text{for } (y,x) \\in \\Gamma \\times D``
+
+The stochastic Galerkin FEM solves the equivalent transformed problem
+
+``-\\mathrm{div}(\\nabla u(y,x)) - \\nabla a(y,x) \\cdot \\nabla u(y,x) = e^{-a(y,x)} f(x) \\quad \\text{for } (y,x) \\in \\Gamma \\times D``
+
 """
 abstract type LogTransformedPoissonProblemPrimal <: AbstractModelProblem end
 

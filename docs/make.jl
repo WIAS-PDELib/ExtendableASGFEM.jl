@@ -23,8 +23,6 @@ makedocs(
         "Solvers" => [
             "sgfevector.md",
             "modelproblems.md",
-        ]
-        "Adaptivity" => [
             "estimators.md",
         ]
         "Plotting" => [

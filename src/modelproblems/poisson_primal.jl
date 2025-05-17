@@ -1,7 +1,10 @@
 """
 $(TYPEDEF)
 
-Poisson problem with linear stochastic coefficient.
+Poisson problem with linear stochastic coefficient ``a`` that seeks ``u`` such that
+
+``-\\mathrm{div}(a(y,x) \\nabla u(y,x)) = f(x) \\quad \\text{for } (y,x) \\in \\Gamma \\times D``
+
 """
 abstract type PoissonProblemPrimal <: AbstractModelProblem end
 
