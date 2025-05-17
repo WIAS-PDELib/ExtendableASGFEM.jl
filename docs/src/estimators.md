@@ -1,14 +1,14 @@
-# A posteriori error estimation
+# Adaptivity and error control
 
-## Residual-based error estimation
+## Residual-based a posteriori error estimation
 Spatial error estimation refers to classical residual-based error estimation
 for the zero-th multi index that refers to the mean value.
 Stochastic error control has to estimate which stochastic mode needs to be refined
 in the sense that either the polynomial degree is increased or neighbouring
 stochastic modes are activated. Both is represented by the multi-indices.
 Then unified error control allows to perform residual-based error estimation for
-the subresiduals that are associated to each multi-index
-(see references on the main page for details).
+the subresiduals that are associated to each multi-index and depend on the model
+problem (see references on the main page for details).
 
 
 ```@autodocs

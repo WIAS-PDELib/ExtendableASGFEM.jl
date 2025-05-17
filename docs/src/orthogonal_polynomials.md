@@ -25,6 +25,12 @@ satisfy the three-term recurrence relation
 initialized by $H_0  = 0$ and $H_1 = 1$.
 
 
+```@autodocs
+Modules = [ExtendableASGFEM]
+Pages = ["orthogonal_polynomials/orthogonal_polynomials.jl"]
+Order   = [:type, :function]
+```
+
 ## Legendre Polynomials (uniform distribution)
 
 For the weight function $\omega(y) = 1/2$ in the interval $[-1,1]$ (uniform distribution),
@@ -33,6 +39,13 @@ of the resulting Legendre polynomials are given by
 ```math
     \| H_n \|^2_\omega = \frac{2}{2n+1}
 ```
+
+```@autodocs
+Modules = [ExtendableASGFEM]
+Pages = ["orthogonal_polynomials/Legendre_uniform.jl"]
+Order   = [:type, :function]
+```
+
 
 ## Hermite Polynomials (normal distribution)
 
@@ -50,4 +63,10 @@ H_5 & = y^4 - 6y^2 +3\\
 and their norms are given by
 ```math
     \| H_n \|^2_\omega = n!
+```
+
+```@autodocs
+Modules = [ExtendableASGFEM]
+Pages = ["orthogonal_polynomials/Hermite_normal.jl"]
+Order   = [:type, :function]
 ```

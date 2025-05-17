@@ -12,13 +12,53 @@ struct ONBasis{T <: Real, OBT <: OrthogonalPolynomialType, npoly, nquad}
     vals4xref::SMatrix{nquad, npoly, T}                           # evaluations of all ONB functions at quadrature points
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+returns the values of all polynomials at the k-th quadrature point
+"""
 vals4qp(ONB::ONBasis, k) = view(ONB.vals4xref, k, :)
+"""
+$(TYPEDSIGNATURES)
+
+returns the values of the p-th polynomial at all quadrature points
+"""
 vals4poly(ONB::ONBasis, p) = view(ONB.vals4xref, :, p + 1)
+"""
+$(TYPEDSIGNATURES)
+
+returns the quadrature weights
+"""
 qw(ONB::ONBasis) = ONB.gauss_rule[2]
+"""
+$(TYPEDSIGNATURES)
+
+returns the quadrature points
+"""
 qp(ONB::ONBasis) = ONB.gauss_rule[1]
+"""
+$(TYPEDSIGNATURES)
+
+returns the values of all polynomials at the quadrature points
+"""
 vals4xref(ONB::ONBasis) = ONB.vals4xref
+"""
+$(TYPEDSIGNATURES)
+
+returns the norm of the p-th polynomial
+"""
 norm4poly(ONB::ONBasis, p) = getindex(ONB.norms, p + 1)
+"""
+$(TYPEDSIGNATURES)
+
+returns the distribution associated to the orthogonal polynomials
+"""
 distribution(ONB::ONBasis{T, OBT}) where {T, OBT} = distribution(OBT)
+"""
+$(TYPEDSIGNATURES)
+
+returns the OrthogonalPolynomialType
+"""
 OrthogonalPolynomialType(ONB::ONBasis{T, OBT}) where {T, OBT} = OBT
 
 

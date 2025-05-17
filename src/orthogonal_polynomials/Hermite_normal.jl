@@ -1,23 +1,30 @@
+"""
+$(TYPEDEF)
+
+Type for dispatching Hermite Polynomials
+"""
 abstract type HermitePolynomials <: OrthogonalPolynomialType end
 
+"""
+$(TYPEDSIGNATURES)
 
+Returns the recurrence coefficients for the k-th Legendre polynomial
+"""
 recurrence_coefficients(::Type{HermitePolynomials}, k::Integer) =
     0, 1, k
 
 issymmetric(::Type{HermitePolynomials}) = true
 
+"""
+$(TYPEDSIGNATURES)
+
+Returns the norm of the k-th Hermite polynomial
+"""
 norms(::Type{HermitePolynomials}, k) = sqrt.(factorial.(big(k)))
 
+"""
+$(TYPEDSIGNATURES)
+
+Returns the distribution associated to the Hermite polynomial
+"""
 distribution(::Type{HermitePolynomials}) = Normal(0, 1)
-
-
-# abstract type HermitePolynomialsNormalized <: OrthogonalPolynomialType end
-
-# recurrence_coefficients(::Type{HermitePolynomialsNormalized}, k::Integer) =
-#   0, 1/sqrt(k+2), sqrt((k+1)/(k+2))
-
-# issymmetric(::Type{HermitePolynomialsNormalized}) = true
-
-# norms(::Type{HermitePolynomialsNormalized}, k) = 1
-
-# distribution(::Type{HermitePolynomialsNormalized}) = Normal(0,1)

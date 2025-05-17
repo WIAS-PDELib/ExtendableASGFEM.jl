@@ -42,7 +42,11 @@ function rc_array_monic(basis::Type{<:OrthogonalPolynomialType}, n::Integer)
 end
 
 
-# Evaluate polynomials at single `x` up to degree `n-1` and save result into given y
+"""
+$(TYPEDSIGNATURES)
+
+Evaluates the first n+1 orthogonal polynomials at a single x and write result into y
+"""
 function evaluate!(y, basis::Type{<:OrthogonalPolynomialType}, n::Integer, x::Real)
     y[1] = 1
     for k in 0:(n - 1)
@@ -55,7 +59,11 @@ function evaluate!(y, basis::Type{<:OrthogonalPolynomialType}, n::Integer, x::Re
     return nothing
 end
 
-# Evaluate polynomials at single `x` up to degree `n-1`
+"""
+$(TYPEDSIGNATURES)
+
+Evaluates the first n+1 orthogonal polynomials at a single x
+"""
 function evaluate(basis::Type{<:OrthogonalPolynomialType}, n::Integer, x::Real)
     y = zeros(typeof(x), n + 1)
     y[1] = 1
@@ -69,7 +77,11 @@ function evaluate(basis::Type{<:OrthogonalPolynomialType}, n::Integer, x::Real)
     return y
 end
 
-# Evaluate polynomials at array `x` up to degree `n-1`
+"""
+$(TYPEDSIGNATURES)
+
+Evaluates the first n+1 orthogonal polynomials at a vector of x
+"""
 function evaluate(basis::Type{<:OrthogonalPolynomialType}, n::Integer, x::AbstractVector{T}) where {T}
     y = ones(T, length(x), n + 1)
     for k in 0:(n - 1)
@@ -84,6 +96,12 @@ function evaluate(basis::Type{<:OrthogonalPolynomialType}, n::Integer, x::Abstra
     return y
 end
 
+
+"""
+$(TYPEDSIGNATURES)
+
+computes the norms of the first n+1 polynomials by Gauss quadrature
+"""
 function LinearAlgebra.norm(basis::Type{<:OrthogonalPolynomialType}, n; gr = gauss_rule(basis, 2 * n))
 
     function norm_internal!(norms, qw, y)
@@ -144,8 +162,11 @@ function sqnorms_from_rc(OBT::Type{<:OrthogonalPolynomialType}, k)
 end
 
 
-## compute normalized recurrence coefficients
-## for normed basis functions
+"""
+$(TYPEDSIGNATURES)
+
+Changes the recurrence coefficients, such that basis functions are normalized.
+"""
 function normalise_recurrence_coefficients(OBT::Type{<:OrthogonalPolynomialType}, k)
     (a, b, c) = recurrence_coefficients(OBT, k)
     h2 = norms(OBT, k + 1)

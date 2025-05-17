@@ -13,10 +13,43 @@ struct TensorizedBasis{T <: Real, ONBType <: ONBasis, MIType}
 end
 
 maxlength(A::Array{Array{T, 1}, 1}) where {T} = maximum([length(A[j]) for j in 1:length(A)])
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the number of multi-indices
+"""
 num_multiindices(TB::TensorizedBasis) = TB.nmodes
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the maximal length of the stored multi-indices
+"""
 maxlength_multiindices(TB::TensorizedBasis{T, ONBT}) where {T, ONBT} = maxlength(TB.multi_indices)
+
+"""
+$(TYPEDSIGNATURES)
+
+returns distribution associated to the orthogonal basis
+"""
 distribution(TB::TensorizedBasis{T, ONBT}) where {T, ONBT} = distribution(TB.ONB)
+
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the j-th multi-index.
+"""
 get_multiindex(TB::TensorizedBasis, j) = TB.multi_indices[j]
+
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the triple products between ``y_m`` and ``H_j`` and ``H_k``
+for two multi-indices `j` and `k`.
+"""
 get_coupling_coefficient(TB::TensorizedBasis{T}, m, j, k) where {T} = TB.G[(m - 1) * TB.nmodes + j, k]::T # ⟨ ξ_m ψ_mi(j) ψ_mi(k) ⟩
 
 
@@ -97,32 +130,6 @@ function TensorizedBasis(OBT::Type{<:OrthogonalPolynomialType}, M, order, maxord
     return TensorizedBasis{T, typeof(ONB), typeof(multi_indices)}(ONB, vals, nmodes, G, multi_indices)
 end
 
-
-function multiplication_with_ym(TB::TensorizedBasis, j, k, m; normalize = true)
-    val = 1.0
-    ONB = TB.ONB
-    multi_indices = TB.multi_indices
-    #for d = 1 : maxlength_multiindices(TB)
-    #    if d == m
-    #        val *= triple_product_y(ONB, multi_indices[j][d], multi_indices[k][d]; normalize = normalize)
-    #    else
-    #        val *= scalar_product(ONB, multi_indices[j][d], multi_indices[k][d]; normalize = normalize)
-    #    end
-    #end
-    #val = triple_product_y(ONB, multi_indices[j][m], multi_indices[k][m]; normalize = normalize)
-    if multi_indices[k][m] == multi_indices[j][m] + 1
-        val = norm4poly(ONB, multi_indices[j][m] + 1) / norm4poly(ONB, multi_indices[j][m])
-    elseif multi_indices[k][m] == multi_indices[j][m] - 1
-        if multi_indices[j][m] == 0
-            val = 0
-        else
-            val = (multi_indices[j][m] - 1) * norm4poly(ONB, multi_indices[j][m] - 1) / norm4poly(ONB, multi_indices[j][m])
-        end
-    end
-
-    return val
-end
-
 function triple_product(TB::TensorizedBasis, j, k, l; normalize = true)
     val = 1.0
     ONB = TB.ONB
@@ -140,7 +147,6 @@ function get_tensor_multiplication_with_ym(T, multi_indices, ONB)
     OBT = OrthogonalPolynomialType(ONB)
     G = ExtendableSparseMatrix{T, Int}(M * nmodes, nmodes) # quick and dirty solution for a 3D sparse array, G[a,b,c] = G[(a-1)*M+b,c]
 
-    prod::T = 0.0
     for j in 1:nmodes
         for m in 1:M
             (a, b, c) = normalise_recurrence_coefficients(OBT, multi_indices[j][m])
@@ -150,34 +156,11 @@ function get_tensor_multiplication_with_ym(T, multi_indices, ONB)
             mu2[m] -= 1
             for k in 1:nmodes
                 if all(multi_indices[k] .== mu1)
-                    #@info "MI $k=$(multi_indices[k]) is +1 neighbour of MI $j=$(multi_indices[j]) with factor $(1/b)"
                     G[(m - 1) * nmodes + j, k] = 1 / b # = beta + 1
                 elseif all(multi_indices[k] .== mu2)
-                    #@info "MI $k=$(multi_indices[k]) is -1 neighbour of MI $j=$(multi_indices[j]) with factor $(c/b)"
                     G[(m - 1) * nmodes + j, k] = c / b # = beta - 1
                 end
             end
-        end
-    end
-    #@assert false
-    flush!(G)
-    return G
-end
-
-## todo : rewrite
-function get_tensor(TB::TensorizedBasis{T, ONBT}) where {T, ONBT}
-    @assert false # never use this function
-    #a = zeros(Int,M)
-    multi_indices = TB.multi_indices
-    M::Int = maxlength_multiindices(TB)
-    nmodes::Int = length(multi_indices)
-    G = ExtendableSparseMatrix{Float64, Int}(M * nmodes, nmodes) # quick and dirty solution for a 3D sparse array, G[a,b,c] = G[(a-1)*M+b,c]
-
-    prod::T = 0.0
-    for j in 1:nmodes, k in 1:nmodes, e in 1:M
-        prod = triple_product(TB, e, j, k; normalize = true)
-        if abs(prod) > 1.0e-12
-            G[(e - 1) * nmodes + j, k] = prod
         end
     end
     flush!(G)
