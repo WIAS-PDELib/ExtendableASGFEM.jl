@@ -39,7 +39,6 @@ using StaticArrays: StaticArrays, SMatrix, SVector
 
 include("mopcontrol.jl")
 export generate_multiindices, add_boundary_modes, classify_modes
-export get_tensor
 export get_neighbourhood_relation_matrix
 
 include("orthogonal_polynomials/orthogonal_polynomials.jl")

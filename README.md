@@ -5,8 +5,12 @@
 
 # ExtendableASGFEM
 
-This package implements the stochastic Galerkin finite element method for certain model problems,
-including iterative solvers and a posteriori error control in two dimensions.
+This package implements the stochastic Galerkin finite element method for certain two dimensional
+model problems involving KLE of stochastic coefficients. The rather huge systems have a tensorized
+structure and are solved by iterative solvers. A posteriori error estimators steer the spatial
+and stochastic refinement.
+
+The spatial discretization is based on the finite element package [ExtendableFEM.jl](https://github.com/WIAS-PDELib/ExtendableFEM.jl)/[ExtendableFEMBase.jl](https://github.com/WIAS-PDELib/ExtendableFEMBase.jl)
 
 ## Scripts/Examples
 
