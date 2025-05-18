@@ -54,11 +54,13 @@ $(TYPEDSIGNATURES)
 estimates the error for the model problem `problem` by Monte carlo sampling: for each sample a discrete
 finite element solution of the deterministic model problem with fixed (sampled) coefficient with
 polynomial order `order` is computed and compared to the given stochastic Galerkin solution
-`SolutionSGFEM`. Return values are:
-- totalerrorL2stress_weighted : mean L2 error of the stress with samples weighted by the distribution
-- totalerrorL2u_weighted : mean L2 error with samples weighted by the distribution
-- totalerrorL2stress_uniform : mean L2 error of the stress with samples weighted uniformly
-- totalerrorL2u_uniform : mean L2 error with samples weighted uniformly
+`SolutionSGFEM`. Return values (each arrays of length M+1 where M is the length of the multi-indices) are:
+- `totalerrorL2stress_weighted` : mean L2 error of the stress with samples weighted by the distribution
+- `totalerrorL2u_weighted` : mean L2 error with samples weighted by the distribution
+- `totalerrorL2stress_uniform` : mean L2 error of the stress with samples weighted uniformly
+- `totalerrorL2u_uniform` : mean L2 error with samples weighted uniformly
+The m-th component of these arrays are the errors when only multi-indices of up to order m
+are included.
 
 """
 function calculate_sampling_error(

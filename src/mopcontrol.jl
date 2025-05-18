@@ -41,9 +41,9 @@ $(TYPEDSIGNATURES)
 
 adds new stochastic modes:
 - for each existing mode all neighbouring modes are added (= all possible copies of that mode where one dimension is increased by 1)
-- `p_extension' additionally ensures that the polynomial degree of the first dimension is increased by this amount
-- `tail_extension' activates tail_expansion[1] many new stochastic modes with order 1,
-   for each existing mode also the next tail_expansion[2] many higher stochastic modes are activated or increased
+- `p_extension` additionally ensures that the polynomial degree of the first dimension is increased by this amount
+- `tail_extension` activates `tail_expansion[1]` many new stochastic modes with order 1,
+   for each existing mode also the next `tail_expansion[2]` many higher stochastic modes are activated or increased
 """
 function add_boundary_modes(multi_indices; p_extension = 1, tail_extension = [10, 2])
     last_nonzero = 0 # = support

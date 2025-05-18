@@ -15,7 +15,7 @@ advance.
 
 !!! note
 
-    Currently it is not possible to used different finite element spaces for different multi-indices,
+    Currently it is not possible to use different finite element spaces for different multi-indices,
     but this feature might be added in the future.
 
 ```@autodocs
