@@ -38,12 +38,28 @@ end
 """
 $(TYPEDSIGNATURES)
 
-computes the residual-based a posteriori error estimator for the current solution vector `sol`
-for the given model problem and stochastic coefficient `C` and returns:
-- `eta4modes` = array with total error estimators for each multi-index (corresponding to the enriched set of multi-indices with the current active modes coming first)
-- `eta4cell` = array with total error estimators for each cell in grid (for spatial refinement)
-- `multi_indices_extended` = enriched set of multi-indices used for the computations
+Compute the residual-based a posteriori error estimator for a stochastic Galerkin solution vector `sol`.
 
+# Arguments
+- `::Type{AbstractModelProblem}`: The model problem type for which the estimator is called. Used for dispatching to the appropriate estimator implementation.
+- `sol::SGFEVector`: The current stochastic Galerkin solution vector.
+- `C::AbstractStochasticCoefficient`: The stochastic coefficient (random field or parameterization).
+- `rhs`: (Optional) Right-hand side function for the PDE (default: `nothing`).
+- `bonus_quadorder`: (Optional) Additional quadrature order for integration (default: 1).
+- `tail_extension`: (Optional) Number of additional boundary modes to include in the multi-index set (default: 5).
+- `kwargs...`: Additional keyword arguments passed to the estimator.
+
+# Returns
+A tuple containing:
+- `eta4modes::Vector{Float64}`: Total error estimator for each multi-index (stochastic mode), corresponding to the enriched set of multi-indices (with current active modes first).
+- `eta4cell::Matrix{Float64}`: Error estimator for each cell in the spatial grid (for spatial refinement), for each multi-index.
+- `multi_indices_extended`: The enriched set of multi-indices used in the computation (including boundary extensions).
+
+# Description
+This function computes a residual-based a posteriori error estimator for the current SGFEM solution. It supports both spatial and stochastic adaptivity by providing error indicators for each cell and each stochastic mode. The estimator is tailored to the model problem and the stochastic coefficient, and can be extended to include additional boundary modes for improved reliability.
+
+If no specialized estimator is available for the given model problem type, an error is raised and empty arrays are returned.
+```
 """
 function estimate(::Type{AbstractModelProblem}, sol::SGFEVector, C::AbstractStochasticCoefficient; kwargs...)
     @error "no error estimator for the model problem type available"

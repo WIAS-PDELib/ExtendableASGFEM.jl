@@ -1,9 +1,14 @@
 """
 $(TYPEDEF)
 
-Structure that stores information of an orthogonal basis, i.e.,
-their norms, quadrature rules and values at reference points,
-and the result of the last evaluate call.
+A structure that stores all relevant information for an orthonormal polynomial basis (ONBasis), including:
+
+- The norms of all basis functions.
+- The quadrature rule (points and weights) used for integration.
+- Precomputed values of all basis functions at the quadrature points.
+- A workspace for storing the result of the last evaluation.
+
+This structure enables efficient evaluation, integration, and manipulation of orthogonal polynomial bases for stochastic Galerkin methods and related applications.
 """
 struct ONBasis{T <: Real, OBT <: OrthogonalPolynomialType, npoly, nquad}
     norms::Vector{T}                                     # norms of all basis functions
@@ -65,8 +70,21 @@ OrthogonalPolynomialType(ONB::ONBasis{T, OBT}) where {T, OBT} = OBT
 """
 $(TYPEDSIGNATURES)
 
-Constructs an ONBasis for the given OrthogonalPolynomialType (and the associated weight function)
-and the maximal polynomial order.
+Constructs an `ONBasis` for the given orthogonal polynomial type and associated weight function, up to the specified maximum polynomial order.
+
+# Arguments
+- `OBT`: The type of orthogonal polynomial (subtype of `OrthogonalPolynomialType`).
+- `maxorder`: The highest polynomial degree to include in the basis.
+- `maxquadorder`: The quadrature order to use for integration (default: `2 * maxorder`).
+- `T`: The floating-point type for computations (default: `Float64`).
+
+# Returns
+An `ONBasis` object containing:
+- The norms of all basis functions.
+- A workspace for storing evaluations.
+- The quadrature rule (points and weights).
+- Precomputed values of all basis functions at the quadrature points.
+
 """
 function ONBasis(OBT::Type{<:OrthogonalPolynomialType}, maxorder, maxquadorder = 2 * maxorder; T = Float64)
     ## find quadrature rule and evaluate basis at all quadrature points

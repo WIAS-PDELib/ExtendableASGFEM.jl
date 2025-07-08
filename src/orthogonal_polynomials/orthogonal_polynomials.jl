@@ -45,7 +45,20 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Evaluates the first n+1 orthogonal polynomials at a single x and write result into y
+Evaluates the first `n+1` orthogonal polynomials of the specified type at a single value `x` and writes the results into the vector `y`.
+
+# Arguments
+- `y`: Preallocated vector to store the polynomial values. Must have length at least `n+1`.
+- `basis`: The type of orthogonal polynomial (subtype of `OrthogonalPolynomialType`).
+- `n`: The highest polynomial degree to evaluate (computes degrees 0 to n).
+- `x`: The point at which to evaluate the polynomials.
+
+# Example
+```julia
+y = zeros(Float64, 6)
+evaluate!(y, HermitePolynomials, 5, 0.0)
+# y now contains H_0(0), H_1(0), ..., H_5(0)
+```
 """
 function evaluate!(y, basis::Type{<:OrthogonalPolynomialType}, n::Integer, x::Real)
     y[1] = 1
@@ -62,7 +75,21 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Evaluates the first n+1 orthogonal polynomials at a single x
+Evaluates the first `n+1` orthogonal polynomials of the specified type at a single value `x` and returns a vector containing the results.
+
+# Arguments
+- `basis`: The type of orthogonal polynomial (subtype of `OrthogonalPolynomialType`).
+- `n`: The highest polynomial degree to evaluate (computes degrees 0 to n).
+- `x`: The point at which to evaluate the polynomials.
+
+# Returns
+A vector of length `n+1` containing the values `[p_0(x), p_1(x), ..., p_n(x)]`.
+
+# Example
+```julia
+y = evaluate(HermitePolynomials, 5, 0.0)
+# y now contains H_0(0), H_1(0), ..., H_5(0)
+```
 """
 function evaluate(basis::Type{<:OrthogonalPolynomialType}, n::Integer, x::Real)
     y = zeros(typeof(x), n + 1)
@@ -100,7 +127,21 @@ end
 """
 $(TYPEDSIGNATURES)
 
-computes the norms of the first n+1 polynomials by Gauss quadrature
+Computes the norms of the first `n+1` orthogonal polynomials of the specified type using Gauss quadrature.
+
+# Arguments
+- `basis`: The type of orthogonal polynomial (subtype of `OrthogonalPolynomialType`).
+- `n`: The highest polynomial degree for which to compute the norm (computes degrees 0 to n).
+- `gr`: Optional. A Gauss quadrature rule as a tuple `(nodes, weights)`. By default, uses `gauss_rule(basis, 2 * n)`.
+
+# Returns
+A vector of length `n+1` containing the L2 norms `[||p_0||, ||p_1||, ..., ||p_n||]` of the orthogonal polynomials with respect to the weight function of the basis.
+
+# Example
+```julia
+norms = norm(HermitePolynomials, 3)
+# norms contains the L^2 norms of H_0, H_1, H_2, H_3
+```
 """
 function LinearAlgebra.norm(basis::Type{<:OrthogonalPolynomialType}, n; gr = gauss_rule(basis, 2 * n))
 

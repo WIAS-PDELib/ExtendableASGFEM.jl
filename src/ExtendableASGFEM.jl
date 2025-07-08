@@ -44,7 +44,7 @@ export get_neighbourhood_relation_matrix
 include("orthogonal_polynomials/orthogonal_polynomials.jl")
 export OrthogonalPolynomialType
 export HermitePolynomials, LegendrePolynomials #, LaguerrePolynomials, ChebyshevTPolynomials, ChebyshevUPolynomials
-export evaluate, gauss_rule
+export evaluate, evaluate!, gauss_rule
 export norm, norms
 export distribution
 export normalise_recurrence_coefficients
