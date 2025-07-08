@@ -51,17 +51,35 @@ FES4sampling(::Type{LogTransformedPoissonProblemDual}, dim, xgrid, order) = [FES
 """
 $(TYPEDSIGNATURES)
 
-estimates the error for the model problem `problem` by Monte carlo sampling: for each sample a discrete
-finite element solution of the deterministic model problem with fixed (sampled) coefficient with
-polynomial order `order` is computed and compared to the given stochastic Galerkin solution
-`SolutionSGFEM`. Return values (each arrays of length M+1 where M is the length of the multi-indices) are:
-- `totalerrorL2stress_weighted` : mean L2 error of the stress with samples weighted by the distribution
-- `totalerrorL2u_weighted` : mean L2 error with samples weighted by the distribution
-- `totalerrorL2stress_uniform` : mean L2 error of the stress with samples weighted uniformly
-- `totalerrorL2u_uniform` : mean L2 error with samples weighted uniformly
-The m-th component of these arrays are the errors when only multi-indices of up to order m
-are included.
+Estimates the error for the given model problem by Monte Carlo sampling. For each sample, a deterministic finite element solution is computed for a fixed (sampled) coefficient with polynomial order `order` and compared to the provided stochastic Galerkin solution `SolutionSGFEM`.
 
+# Returns
+A tuple of arrays (each of length `M+1`, where `M` is the maximum order of the multi-indices):
+- `totalerrorL2stress_weighted`: Mean L2 error of the stress, weighted by the distribution.
+- `totalerrorL2u_weighted`: Mean L2 error of the solution, weighted by the distribution.
+- `totalerrorL2stress_uniform`: Mean L2 error of the stress, weighted uniformly.
+- `totalerrorL2u_uniform`: Mean L2 error of the solution, weighted uniformly.
+
+The m-th component of these arrays gives the error when only multi-indices up to order m are included.
+
+# Arguments
+- `SolutionSGFEM`: The stochastic Galerkin solution (SGFEVector).
+- `C`: The stochastic coefficient.
+- `problem`: The model problem type (default: `LogTransformedPoissonProblemPrimal`).
+- `bonus_quadorder_a`: Additional quadrature order for the coefficient (default: 10).
+- `bonus_quadorder_f`: Additional quadrature order for the right-hand side (default: 0).
+- `order`: Polynomial order for the deterministic reference solution (default: 2).
+- `rhs`: Right-hand side function (optional).
+- `dim`: Spatial dimension (default: inferred from the solution).
+- `Msamples`: Number of random variables to sample (default: `maxm(C)`).
+- `parallel_sampling`: Whether to use parallel sampling (default: true).
+- `dimensionwise_error`: If true, computes errors dimensionwise (default: false).
+- `energy_norm`: If true, uses the energy norm for stress error (default: true).
+- `debug`: If true, enables debug output and plotting (default: false).
+- `nsamples`: Number of Monte Carlo samples (default: 100).
+
+# Details
+This function computes deterministic reference solutions for each sample, then compares them to the SGFEM solution to estimate the error. Both weighted and unweighted (uniform) averages are returned for stress and solution errors.
 """
 function calculate_sampling_error(
         SolutionSGFEM::SGFEVector,

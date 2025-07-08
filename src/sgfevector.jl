@@ -1,9 +1,19 @@
 """
 $(TYPEDEF)
 
-structure that builds upon ExtendableFEMBase.FEVector and adds information
-on the stochastic discretization, i.e. the used TensoriedBasis
+A structure that extends `ExtendableFEMBase.FEVector` to include information about the stochastic discretization, specifically the associated `TensorizedBasis`.
 
+# Fields
+- `FES_space`: Array of finite element spaces for all stochastic modes.
+- `TB`: The tensorized basis used for the stochastic discretization.
+- `active_modes`: Indices of the active stochastic modes (with respect to `TB.multi_indices`).
+- `length4modes`: Offsets for each mode in the global vector.
+- `FEVectorBlocks`: Vector block mask for each multi-index (stochastic mode).
+- `entries`: The full coefficient vector containing all degrees of freedom.
+- `last_sample`: The last sample used for evaluation (for efficient repeated evaluation).
+- `FEV`: An `FEVector` used for evaluating the SGFEVector at a given sample.
+
+This structure enables efficient storage, evaluation, and manipulation of solutions in stochastic Galerkin finite element methods.
 """
 struct SGFEVector{T, Tv, Ti, ONBType <: ONBasis, MIType}
     FES_space::Array{FESpace{Tv, Ti}, 1}        ## finite element space for all modes
@@ -19,8 +29,16 @@ end
 """
 $(TYPEDSIGNATURES)
 
-evaluates the SGVector at that sample and stores the results in SGFEV.FEV.
+Evaluates the `SGFEVector` at the given sample `S` and stores the result in `SGFEV.FEV`.
 
+# Arguments
+- `SGFEV`: The stochastic Galerkin finite element vector to evaluate.
+- `S`: A vector representing the sample (values for the stochastic variables).
+
+# Details
+- The sample `S` is stored in `SGFEV.last_sample` (truncated or padded as needed).
+- The tensorized basis is evaluated at `S`, and the resulting coefficients are used to assemble the spatial solution in `SGFEV.FEV`.
+- This enables efficient evaluation of the SGFEM solution at arbitrary points in the stochastic parameter space.
 """
 function set_sample!(SGFEV::SGFEVector, S::AbstractVector)
     last_sample = SGFEV.last_sample
@@ -53,9 +71,17 @@ end
 """
 $(TYPEDSIGNATURES)
 
-constructs an SGFEVector for the given (spatial) finite element space `FES` and the
-(tensorized basis of the stochastic discretization) `TB`. 
+Constructs an `SGFEVector` for the given spatial finite element spaces `FES` and the tensorized basis `TB` representing the stochastic discretization.
 
+# Arguments
+- `FES`: Array of finite element spaces (one for each unknown).
+- `TB`: The tensorized basis for the stochastic discretization.
+- `active_modes`: Indices of the active stochastic modes to include (default: all modes in `TB`).
+- `T`: The floating-point type for the coefficient vector (default: `Tv`).
+- `unames`: Names or identifiers for the unknowns (default: `1:length(FES)`).
+
+# Returns
+An `SGFEVector` object that stores the spatial and stochastic discretization, the coefficient vector, and all necessary metadata for efficient evaluation and manipulation in stochastic Galerkin FEM.
 """
 function SGFEVector(FES::Array{<:FESpace{Tv, Ti}, 1}, TB::TensorizedBasis{Tv, ONBType, MIType}; active_modes = :all, T = Tv, unames = 1:length(FES)) where {Tv, Ti, ONBType, MIType}
     if active_modes == :all
@@ -140,17 +166,26 @@ function Base.show(io::IO, SGFEV::SGFEVector)
     println(io, "======================")
     println(io, "FETypes = ", fetypes(SGFEV))
     println(io, "")
-    ndofs = [SGFEV.FES_space[j].ndofs for j in 1:length(SGFEV.FES_space)]
-    print(io, "   block  |     MI\t|    ndofs \t|    min  /  max")
-    for j in 1:num_multiindices(SGFEV)
-        @printf(io, "\n [%5d]  | ", j)
-        @printf(io, "  %s\t| ", "$(SGFEV.TB.multi_indices[SGFEV.active_modes[j]])")
-        @printf(io, " %8d\t|", sum(ndofs))
-        ext = extrema(SGFEV[j])
-        @printf(io, " %.2e/%.2e", ext[1], ext[2])
+    ndofs = SGFEV.FES_space[1].ndofs
+    nblocks = num_multiindices(SGFEV)
+    # Compute blockwise L2 norms
+    block_norms = [norm(SGFEV[j]) for j in 1:nblocks]
+    total_norm = norm(block_norms)
+    # Table header
+    print(io, "   block  |                 MI                 |   ndofs  |     min      |     max      |    norm   ")
+    print(io, "\n-----------------------------------------------------------------------------------------------------")
+    for j in 1:nblocks
+        mi = SGFEV.TB.multi_indices[SGFEV.active_modes[j]]
+        ext = extrema(view(SGFEV[j]))
+        nrm = block_norms[j]
+        @printf(
+            io, "\n [%5d]  | %s | %8d | %12.4e | %12.4e | %10.4e ",
+            j, lpad(string(mi), 34), ndofs, ext[1], ext[2], nrm
+        )
     end
-    return @printf(io, "\n\t\t\t %10d (total)", length(SGFEV))
-
+    println(io, "\n-----------------------------------------------------------------------------------------------------")
+    @printf(io, "Total L2 norm = %.4e\n", total_norm)
+    return @printf(io, "Total ndofs = %d\n", length(SGFEV))
 end
 
 

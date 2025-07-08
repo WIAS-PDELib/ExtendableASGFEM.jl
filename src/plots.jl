@@ -1,8 +1,21 @@
 """
 $(TYPEDSIGNATURES)
 
-plots scalarplots of the stochastic modes of `sol` sorted by their norm via ExtendableFEM.plots/GridVisualize.
-The `Plotter` argument determines the backend (e.g. GLMakie, CairoMakie, PyPlot, Plots).
+Plot scalar plots of the stochastic modes of an `SGFEVector` solution using `ExtendableFEM.plots.GridVisualize`.
+
+# Arguments
+- `sol::SGFEVector`: The stochastic Galerkin finite element solution vector whose modes are to be visualized.
+- `unknown`: (Optional, default: 1) Index of the unknown to plot (for multi-unknown systems).
+- `Plotter`: (Optional) Plotting backend to use (e.g., `GLMakie`, `CairoMakie`, `PyPlot`, `Plots`).
+- `nmodes`: (Optional) Number of stochastic modes to plot (default: all modes in the tensorized basis).
+- `ncols`: (Optional, default: 3) Number of columns in the plot grid.
+- `width`: (Optional) Total width of the plot grid in pixels (default: `400 * ncols`).
+- `sort`: (Optional, default: `false`) If `true`, modes are sorted by their L2 norm (largest first).
+
+# Example
+```julia
+plot_modes(sol; Plotter=GLMakie, ncols=4, sort=true)
+```
 """
 function plot_modes(sol::SGFEVector; unknown = 1, Plotter = nothing, nmodes = num_multiindices(sol.TB), ncols = 3, width = 400 * ncols, sort = false)
     nrows = Int(ceil(nmodes / ncols))

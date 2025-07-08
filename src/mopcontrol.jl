@@ -39,11 +39,23 @@ end
 """
 $(TYPEDSIGNATURES)
 
-adds new stochastic modes:
-- for each existing mode all neighbouring modes are added (= all possible copies of that mode where one dimension is increased by 1)
-- `p_extension` additionally ensures that the polynomial degree of the first dimension is increased by this amount
-- `tail_extension` activates `tail_expansion[1]` many new stochastic modes with order 1,
-   for each existing mode also the next `tail_expansion[2]` many higher stochastic modes are activated or increased
+Adds new stochastic modes (multi-indices) to the current set by extending in several ways:
+
+- For each existing mode, all neighboring modes are added (i.e., all possible copies of that mode where one dimension is increased by 1).
+- `p_extension` ensures that the polynomial degree in the first dimension is increased by this amount (adds new modes with higher degree in the first component).
+- `tail_extension` is a two-element vector:
+    - `tail_extension[1]`: Adds this many new modes of order 1 (i.e., with a single nonzero entry).
+    - `tail_extension[2]`: For each existing mode, also activates or increases the next `tail_extension[2]` higher stochastic modes in each dimension.
+
+Returns the extended set of multi-indices.
+
+# Arguments
+- `multi_indices`: The current set of multi-indices (vector of integer vectors).
+- `p_extension`: Number of additional degrees to add in the first dimension (default: 1).
+- `tail_extension`: Two-element vector controlling the number and type of new modes to add (default: `[10, 2]`).
+
+# Returns
+A new vector containing the extended set of multi-indices.
 """
 function add_boundary_modes(multi_indices; p_extension = 1, tail_extension = [10, 2])
     last_nonzero = 0 # = support
@@ -137,12 +149,21 @@ end
 """
 $(TYPEDSIGNATURES)
 
-classifies all multi indices into these categories:
-- `active_int` = mode and all its direct neighbours (+1 in all active and the next dimensions) are in active_modes
-- `active_bnd` = mode but not all its direct neighbours are in active_modes
-- `inactive_bnd` = inactive mode that has an active neighbour
-- `inactive_bnd2` = inactive mode that has an neighbour in inactive_bnd 
-- `inactive_else` = all other
+Classifies all multi-indices into the following categories based on their neighborhood relations:
+
+- `active_int`: Active mode where all direct neighbors (obtained by increasing any active or next dimension by 1) are also in `active_modes`.
+- `active_bnd`: Active mode where not all direct neighbors are in `active_modes` (i.e., it lies on the active boundary).
+- `inactive_bnd`: Inactive mode that has at least one active neighbor (first layer of inactive modes).
+- `inactive_bnd2`: Inactive mode that has a neighbor in `inactive_bnd` (second layer of inactive modes).
+- `inactive_else`: All other inactive modes.
+
+# Arguments
+- `multi_indices`: The set of all multi-indices to classify (vector of integer vectors).
+- `active_modes`: The set of currently active modes (default: all `multi_indices`).
+
+# Returns
+A tuple of five vectors containing the indices of the multi-indices in the following order:
+`(inactive_else, inactive_bnd, inactive_bnd2, active_bnd, active_int)`.
 """
 function classify_modes(multi_indices, active_modes = multi_indices)
     active_bnd = Int[] # have an inactive neighbour

@@ -3,15 +3,15 @@ abstract type AbstractModelProblem end
 """
 $(TYPEDSIGNATURES)
 
-solves the specified model problem with the given stochastic coefficient `C` and right-hand side `rhs`
-and writes the solution into `sol`. Via this `sol` vector the spatial and stochastic discretization
-is communicated as well as initial data for the iterative solver.
-The boolean `use_iterative_solver` (default is true) determines if the iterative solver is used
-or if the full matrix is assembled and solved by a direct solver (very slow for larger systems).
-The parameters `bonus_quadorder_f` (default is 0) and `bonus_quadorder_a` (default is 2) can be used
-to increase the quadrature order in terms that involve the rhs or the stochastic coefficient, respectively.
+Solves the specified model problem using the provided stochastic coefficient `C` and right-hand side `rhs`, writing the solution into `sol`.
 
+The `sol` vector communicates both the spatial and stochastic discretization, as well as any initial data required for the iterative solver.
 
+- If `use_iterative_solver` (default: `true`) is set, an iterative solver is used. Otherwise, the full system matrix is assembled and solved directly (note: this is very slow for large systems).
+- The parameters `bonus_quadorder_f` (default: `0`) and `bonus_quadorder_a` (default: `2`) allow you to increase the quadrature order for terms involving the right-hand side or the stochastic coefficient, respectively.
+- Additional keyword arguments can be passed via `kwargs`.
+
+If no solver is implemented for the given model problem, an error is thrown.
 """
 function solve!(
         ::Type{AbstractModelProblem},

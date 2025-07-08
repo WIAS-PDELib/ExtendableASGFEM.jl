@@ -1,8 +1,29 @@
 """
 $(TYPEDEF)
 
-Structure that stores information of a tensorized
-orthogonal for a certain set of multi-indices.
+A structure representing a tensorized orthogonal polynomial basis for stochastic Galerkin methods, associated with a given set of multi-indices.
+
+# Fields
+- `ONB::ONBType`: The underlying univariate orthogonal basis (e.g., Hermite, Legendre).
+- `vals::Vector{Vector{T}}`: Cached evaluations of the univariate basis functions at the most recent sample(s).
+- `nmodes::Int`: Number of multi-indices (i.e., the number of stochastic modes).
+- `G::ExtendableSparseMatrix{T, Int64}`: Coupling matrix encoding triple products or recurrence relations between basis functions.
+- `multi_indices::MIType`: Collection of multi-indices (typically an array of integer arrays), each representing a multi-dimensional polynomial degree.
+
+# Description
+The `TensorizedBasis` type encapsulates all information required to evaluate and manipulate a tensor-product polynomial basis in multiple stochastic dimensions. It supports efficient evaluation, storage of basis values, and access to coupling coefficients for use in stochastic Galerkin finite element methods (SGFEM).
+
+# Example
+```julia
+# Construct a tensorized Hermite basis with 3 variables and total degree 2
+TB = TensorizedBasis(HermitePolynomials, 3, 2, 2)
+
+# Evaluate all basis functions at a sample point
+set_sample!(TB, [0.1, -0.2, 0.3])
+
+# Get the value of the 5th basis function at the current sample
+val = evaluate(TB, 5)
+```
 """
 struct TensorizedBasis{T <: Real, ONBType <: ONBasis, MIType}
     ONB::ONBType
@@ -76,33 +97,62 @@ $(TYPEDSIGNATURES)
 shows information on the tensorized basis.
 """
 function Base.show(io::IO, TB::TensorizedBasis)
+    # Summary section
+    nvars = maxlength_multiindices(TB)
+    nmodes = num_multiindices(TB)
+    dist = distribution(TB)
+    Gnnz = length(TB.G.cscmatrix.nzval)
     println(io, "TENSORIZED BASIS")
-    println(io, "nmodes = $(size(TB.multi_indices))")
-    println(io, "")
-    for j in 1:min(40, length(TB.multi_indices))
-        print(io, "$(TB.multi_indices[j]) ")
-        if j % 4 == 0
-            println(io, "")
+    println(io, "----------------")
+    println(io, "Number of modes: $nmodes")
+    println(io, "Max multi-index length: $nvars")
+    println(io, "Underlying basis: $(typeof(TB.ONB))")
+    println(io, "Distribution: $dist")
+    println(io, "Coupling matrix nonzeros: $Gnnz\n")
+
+    # Multi-indices display
+    println(io, "Multi-indices:")
+    nshow = 8
+    nend = 2
+    total = length(TB.multi_indices)
+    function print_mi_row(startidx, endidx)
+        for j in startidx:endidx
+            mi = TB.multi_indices[j]
+            print(io, lpad(string(mi), 12))
+            if (j - startidx + 1) % 4 == 0
+                println(io, "")
+            end
         end
+        return
     end
-    if length(TB.multi_indices) > 50
-        println(io, "...")
+    if total <= nshow + nend
+        print_mi_row(1, total)
+        println(io, "")
+    else
+        print_mi_row(1, nshow)
+        println(io, "  ...")
+        print_mi_row(total - nend + 1, total)
+        println(io, "")
     end
 
+    # ON-BASIS section
     ONB = TB.ONB
-    qp = ExtendableASGFEM.qp(ONB)
-    qw = ExtendableASGFEM.qw(ONB)
-    norms = ONB.norms
-    vals = ONB.vals4xref
+    norms = getfield(ONB, :norms)
     println(io, "ON-BASIS")
-    println(io, "type = $(typeof(ONB))")
-    println(io, "")
-    #for j = 1 : length(qp)
-    #    println(io, "$(qp[j]) $(vals[j,:])")
-    #end
-    for j in 1:length(norms)
-        println(io, "||H_$(j - 1)||_ω =$(norms[j])")
+    println(io, "--------")
+    println(io, "Type: $(typeof(ONB))")
+    print(io, "Norms: ")
+    maxn = min(length(norms), 8)
+    for j in 1:maxn
+        @printf(io, "%g", norms[j])
+        if j < maxn
+            print(io, ", ")
+        end
     end
+    if length(norms) > maxn
+        print(io, ", ...")
+    end
+    println(io, "")
     return
 end
 
