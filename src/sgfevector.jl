@@ -97,7 +97,7 @@ function SGFEVector(FES::Array{<:FESpace{Tv, Ti}, 1}, TB::TensorizedBasis{Tv, ON
         append!(entries, zeros(Float64, ndofs * length(active_modes)))
         for m in active_modes
             name = nunknowns == 1 ? "$(TB.multi_indices[m])" : "$(unames[j]) $(TB.multi_indices[m])"
-            push!(feblocks, FEVectorBlock{T, Tv, Ti, eltype(fes), ExtendableFEMBase.assemblytype(fes)}(name, fes, length4modes[end], length4modes[end] + ndofs, entries))
+            push!(feblocks, FEVectorBlock{T, Tv, Ti, typeof(entries), eltype(fes), ExtendableFEMBase.assemblytype(fes)}(name, fes, length4modes[end], length4modes[end] + ndofs, entries))
             push!(length4modes, length4modes[end] + ndofs)
         end
     end
