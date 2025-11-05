@@ -10,6 +10,41 @@ of the stochastic Galerkin (SG) methods implemented in this repository.
 - Solve the system with solvers that exploit the tensor/block structure.
 - Adaptivity in space and in the stochastic index set to reduce costs.
 
+## Example: Parametric Poisson Problem
+
+To illustrate the workflow, consider a Poisson problem with parametric diffusion coefficient:
+
+```math
+-\mathrm{div}(a(y,x) \nabla u(y,x)) = f(x) \quad \text{for } (y,x) \in \Gamma \times D
+```
+
+where the coefficient has the Karhunen-Loève expansion:
+
+```math
+a(y,x) = a_0(x) + \sum_{m=1}^M \sqrt{\lambda_m} \phi_m(x) y_m
+```
+
+with mean field $a_0$, eigenpairs $(\lambda_m,\phi_m)$ and parameters $y_m \in [-1,1]$.
+
+### Stochastic Galerkin Formulation
+
+1. Expand the solution in tensorized basis functions:
+   ```math
+   u(y,x) = \sum_{\mu} u_\mu(x) H_\mu(y)
+   ```
+   where $H_\mu(y) = \prod_{m=1}^M H_{\mu_m}(y_m)$ are multivariate Legendre polynomials.
+
+2. Galerkin projection yields the weak form:
+   ```math
+   \sum_{\mu} \int_\Gamma a(y,x) \nabla u_\mu(x) \cdot \nabla v(x) H_\mu(y) H_\nu(y)\,dy = \int_\Gamma f(x)v(x) H_\nu(y)\,dy
+   ```
+   for all test functions $v(x)$ and indices $\nu$.
+
+3. This results in a coupled block system $\mathbf{A}\mathbf{u} = \mathbf{b}$ where:
+   - Each block $\mathbf{A}_{\mu,\nu}$ involves the mean and KL terms of $a(y,x)$
+   - The tensor structure allows efficient matrix-free operations
+
+
 ## Where to find documentation/implementations of the key blocks
 1. Parametric model / KL representation of the random coefficient.
    - See:
@@ -35,7 +70,6 @@ of the stochastic Galerkin (SG) methods implemented in this repository.
    - Error estimators and marking criteria implemented in the script driver `scripts/poisson.jl` for the available Poisson model problems.
    - Error estimators are problem-dependent and can be currently found in `src/estimate.jl`
    - Spatial (mesh refinement) uses refinement routines from [ExtendableFEMBase.jl](https://github.com/WIAS-PDELib/ExtendableGrids.jl)
-   - Stochastic refinement (enrich multi‑index set) uses functions from 
-   `src/mopcontrol.jl`
-   - see dcomumentation page on [Estimators](estimators.md) for some more details
+   - Stochastic refinement (enrich multi‑index set) uses functions from `src/mopcontrol.jl`
+   - see documentation page on [Estimators](estimators.md) for some more details
    - Results, parameters and reproducible outputs are stored with DrWatson (see scripts/poisson.jl for naming pattern).
