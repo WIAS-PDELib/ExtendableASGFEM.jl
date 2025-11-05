@@ -12,31 +12,26 @@ of the stochastic Galerkin (SG) methods implemented in this repository.
 
 ## Where to find documentation/implementations of the key blocks
 1. Parametric model / KL representation of the random coefficient.
-   - See also:
-     - [Stochastic coefficients](coefficients.md) — available random coefficients
-     - and polynomial chaos expansions.
+   - See:
+     - [Stochastic coefficients](coefficients.md) — available random coefficients and polynomial chaos expansions.
      - [Model problems](modelproblems.md) — available model problems that involve random coefficients. See also source: `src/modelproblems/`.
-
 2. Choose stochastic basis, orthogonal polynomials, suitable for the parameter space
-   - See also:
+   - See:
      - [Orthogonal polynomials and recurrence relations](orthogonal_polynomials.md) — Legendre / Hermite polynomials and recurrence coefficients.
      - [ONBasis (one-dimensional orthonormal basis)](onbasis.md) — construction and utilities for evaluating 1D orthonormal polynomial bases (norms, quadrature, evaluations).
      - [Tensorized / multivariate basis (TensorizedBasis)](tonbasis.md) — assembling multivariate bases from ONBasis instances and precomputing triple products.
-
-3. Build spatial FE spaces and blocks of system matrix.
+1. Build spatial FE spaces and blocks of system matrix.
    - Use FESpace types (H1, HDIV, ...) from the ExtendableFEM ecosystem.
    - See: [ExtendableFEMBase.jl](https://github.com/WIAS-PDELib/ExtendableFEMBase.jl) — basis finite-element spaces, basis evaluations and low-level FE utilities like standard interpolations.
    - See: [ExtendableFEM.jl](https://github.com/WIAS-PDELib/ExtendableFEM.jl) — high-level deterministic operator assembly and helpers used throughout the codebase.
-  
-4. Assemble and solve the full SG system
+2. Assemble and solve the full SG system
    - Galerkin projection yields a coupled deterministic block system. Briefly:
      - Expand u(y,x)=∑_μ u_μ(x) H_μ(y), test with H_ν ⇒ block matrix with entries a_{μ,ν} A(·).
    - Solver choices:
      - direct assembly + dense solver (for debugging / small problems)
      - matrix‑free iterative solvers exploiting tensor/block structure + preconditioners
    - See problem solver implementations: `src/modelproblems/solvers_*.jl`.
-
-5. Postprocessing, error estimation & adaptivity
+3. Postprocessing, error estimation & adaptivity
    - Error estimators and marking criteria implemented in the script driver `scripts/poisson.jl` for the available Poisson model problems.
    - Error estimators are problem-dependent and can be currently found in `src/estimate.jl`
    - Spatial (mesh refinement) uses refinement routines from [ExtendableFEMBase.jl](https://github.com/WIAS-PDELib/ExtendableGrids.jl)
