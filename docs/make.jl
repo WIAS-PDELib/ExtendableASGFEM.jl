@@ -28,6 +28,9 @@ makedocs(
         "Plotting" => [
             "plots.md",
         ]
+        "Scripts" => [
+            "poisson_script.md",
+        ]
     ],
 )
 

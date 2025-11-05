@@ -4,7 +4,7 @@
 
 runs AFEM loop for stochastic Poisson problem
  
-main usage:
+usage:
 - run experiment: run(; problem = problem, kwargs...)
 - load results  : show_results(; kwargs...)
 - produce plots : produce_plots(; kwargs...)
@@ -78,6 +78,42 @@ default_args = Dict(
 )
 
 
+## that is the main function to run and save results
+function run(; force = false, kwargs...)
+    data = deepcopy(default_args)
+
+    for (k, v) in kwargs
+        data[String(k)] = v
+    end
+    Plotter = data["Plotter"]
+
+    ## load/produce data
+    data, ~ = produce_or_load(_main, data, filename = filename, force = force)
+
+    ## plot final solution
+    results = data["results"]
+    sol = data["solution"]
+    multi_indices = data["multi_indices"]
+    repair_grid!(sol.FES_space[1].xgrid)
+    if Plotter === nothing
+        for j in 1:num_multiindices(sol)
+            @show extrema(view(sol[j]))
+            println(stdout, unicode_scalarplot(sol[j]; title = "MI $(multi_indices[j])"))
+        end
+    else
+        plot_modes(sol; Plotter = Plotter, ncols = 4)
+    end
+
+    @info "final multi_indices = "
+    for m in multi_indices
+        println("$m")
+    end
+    @show results
+    return data
+end
+
+
+# loads (or produces) a result file and prints the data
 function show_results(; force = false, mode_history_up_to_level = 15, kwargs...)
     data = deepcopy(default_args)
 
@@ -113,8 +149,9 @@ function show_results(; force = false, mode_history_up_to_level = 15, kwargs...)
     return data
 end
 
-
-function main(
+# the main AFEM loop for the given problem and data
+# (this function does not check for existing results, better use run !)
+function _main(
         data = nothing;
         debug = false,
         plot_solution = false,
@@ -392,40 +429,6 @@ function main(
     data["version"] = pkgversion(ExtendableASGFEM)
     writedlm(filename_params, data, "=")
 
-    return data
-end
-
-
-function run(; force = false, kwargs...)
-    data = deepcopy(default_args)
-
-    for (k, v) in kwargs
-        data[String(k)] = v
-    end
-    Plotter = data["Plotter"]
-
-    ## load/produce data
-    data, ~ = produce_or_load(main, data, filename = filename, force = force)
-
-    ## plot final solution
-    results = data["results"]
-    sol = data["solution"]
-    multi_indices = data["multi_indices"]
-    repair_grid!(sol.FES_space[1].xgrid)
-    if Plotter === nothing
-        for j in 1:num_multiindices(sol)
-            @show extrema(view(sol[j]))
-            println(stdout, unicode_scalarplot(sol[j]; title = "MI $(multi_indices[j])"))
-        end
-    else
-        plot_modes(sol; Plotter = Plotter, ncols = 4)
-    end
-
-    @info "final multi_indices = "
-    for m in multi_indices
-        println("$m")
-    end
-    @show results
     return data
 end
 

@@ -1,7 +1,24 @@
 """
 $(TYPEDEF)
 
-Dual log-transformed formulation of the Poisson problem with exponential stochastic coefficient (WIP).
+
+Poisson problem with exponential stochastic coefficient ``e^a`` that seeks ``u`` such that
+
+``-\\mathrm{div}(e^a(y,x) \\nabla u(y,x)) = f(x) \\quad \\text{for } (y,x) \\in \\Gamma \\times D``
+
+The dual formulation of the log-transformed formulation of the Poisson problem
+introduces the auxiliary stress variable ``p := - e^a(y,x) \\nabla u(y,x) = -∇ũ - ∇aũ`` for the transformed
+``ũ := e^{-a} u``.
+
+Its weak formulation seeks ``(p,ũ)`` such that
+
+```math
+\\begin{aligned}
+(p, q) + (ũ \\nabla a, q) - (\\mathrm{div}(q), ũ) & = 0 \\quad \\text{for all } q \\\\
+-(\\mathrm{div}(p), v) & = (f, v) \\quad \\text{for all } v
+\\end{aligned}
+```
+
 """
 abstract type LogTransformedPoissonProblemDual <: AbstractModelProblem end
 
