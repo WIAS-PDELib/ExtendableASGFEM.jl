@@ -17,12 +17,12 @@ using GridVisualize
 
 function main(;
         problem = PoissonProblemPrimal,
-        nrefs = 4,      # number of uniform refinements of the initial grid
+        nrefs = 3,      # number of uniform refinements of the initial grid
         order = 2,      # polynomial order of the FEspaces
         decay = 2.0,    # decay factor for the random coefficient
         mean = problem == PoissonProblemPrimal ? 1.0 : 0.0, # mean value of coefficient
         domain = "square",  # domain, e.g., "square" or "lshape"
-        initial_modes = [[0], [1,0], [0,1], [0,0,1]],   # initial multi-indices for stochastic basis
+        initial_modes = [[0], [1,0], [0,1], [2,0], [0,0,1]],   # initial multi-indices for stochastic basis
         f! = (result, qpinfo) -> (result[1] = 1),       # right-hand side function
         use_iterative_solver = true,    # use iterative solver ? (otherwise direct)
         Plotter = nothing)
@@ -69,13 +69,20 @@ function main(;
     @info "Solving..."
     solve!(problem, sol, C; rhs = f!, use_iterative_solver = use_iterative_solver)
 
+    ## compute exact error (by MC sampling)
+    weightederrorH1, weightederrorL2, uniformerrorH1, uniformerrorL2 = calculate_sampling_error(sol, C; problem = problem, rhs = f!, order = order + 1, nsamples = 50)
+
     ## plot solution
     if !isnothing(Plotter)
         p = plot_modes(sol; Plotter = Plotter, ncols = 4)
         display(p)
     end
 
-    return sol, xgrid
+    @info "RESULTS
+        || ∇(u-u_h) || (w,u) = $(sqrt(weightederrorH1[end])), $(sqrt(uniformerrorH1[end]))
+        || u - u_h || (w,u) = $(sqrt(weightederrorL2[end])), $(sqrt(uniformerrorL2[end]))"
+
+    return sol
 end
 
 end # module
