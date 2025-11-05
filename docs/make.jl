@@ -11,23 +11,24 @@ makedocs(
     warnonly = false,
     doctest = true,
     pages = [
-        "Home" => "index.md"
+        "Home" => "index.md",
+        "SGFEM Overview" => "sgfem.md",
         "Model problems" => [
             "modelproblems.md",
             "coefficients.md",
-        ]
+        ],
         "Stochastic discretization" => [
             "orthogonal_polynomials.md",
             "onbasis.md",
             "tonbasis.md",
-        ]
+        ],
         "Solving" => [
             "solvers.md",
             "estimators.md",
-        ]
+        ],
         "Plotting" => [
             "plots.md",
-        ]
+        ],
         "Scripts" => [
             "poisson_script.md",
         ]
