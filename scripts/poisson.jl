@@ -12,7 +12,7 @@ main usage:
 possible values for problem are
 - PoissonProblemPrimal = Poisson problem with linear coefficient a
 - LogTransformedPoissonProblemPrimal = log-transformed Poisson problem with exponential coefficient exp(a)
-- LogTransformedPoissonProblemDual = dual formulation
+- LogTransformedPoissonProblemDual = dual formulation of the log-transformed Poisson problem
 
 =#
 
@@ -431,9 +431,9 @@ end
 
 
 function produce_plots(;
+        order = default_args["order"],
+        decay = default_args["decay"],
         legend_position = :lb,
-        order = 1,
-        decay = 1,
         xscale = log10,
         yscale = log10,
         force = false,
@@ -451,9 +451,9 @@ function produce_plots(;
     colors = Makie.wong_colors()
     linestyles = [:solid, :dot, :dashdot, :dashdotdot]
 
-    data = deepcopy(default_args)
+    basedata = deepcopy(default_args)
     for (k, v) in kwargs
-        data[String(k)] = v
+        basedata[String(k)] = v
     end
 
     if template == :convergence
@@ -479,16 +479,16 @@ function produce_plots(;
     end
     data = Array{Dict{String, Any}, 2}(undef, length(order), length(decay))
     for o in 1:length(order), d in 1:length(decay)
-        data["order"] = order[o]
-        data["decay"] = decay[d]
-        data[o, d], ~ = produce_or_load(main, data, filename = filename, force = force)
+        basedata["order"] = order[o]
+        basedata["decay"] = decay[d]
+        data[o, d], ~ = produce_or_load(main, basedata, filename = filename, force = force)
         xgrid = data[o, d]["solution"].FES_space[1].xgrid
         repair_grid!(xgrid)
         xgrid[BFaceRegions] .= 1
 
         ## gridplot
         gplt = GridVisualize.gridplot(xgrid; Plotter = CairoMakie, linewidth = 1, colorbar = :none, legend = :none)
-        filename_plot = filename(data; add = "grid_", folder = "plots", makepath = true) * ".png"
+        filename_plot = filename(basedata; add = "grid_", folder = "plots", makepath = true) * ".png"
         CairoMakie.save(filename_plot, gplt)
         @info "grid plot for $cols saved under $filename_plot"
 
@@ -529,8 +529,7 @@ function produce_plots(;
 
         @info "producing convergence history..."
         for o in 1:length(order)
-            data = data[o, d]
-            df = data["results"]
+            df = data[o, d]["results"]
             nlevels = size(df, 1)
             ndofs = nothing
             ndofs_space = nothing
@@ -589,9 +588,9 @@ function produce_plots(;
         end
         axislegend(ax_conv, position = legend_position, merge = true, labelsize = 16, orientation = :horizontal, nbanks = length(order) * length(cols) + 1)
 
-        data["order"] = order
-        data["decay"] = decay[d]
-        filename_plot = filename(data; add = "$(template)_", folder = "plots", makepath = true) * ".png"
+        basedata["order"] = order
+        basedata["decay"] = decay[d]
+        filename_plot = filename(basedata; add = "$(template)_", folder = "plots", makepath = true) * ".png"
         CairoMakie.save(filename_plot, f_conv)
         @info "convergence plot for $cols saved under $filename_plot"
     end
@@ -603,8 +602,7 @@ function produce_plots(;
         height = zeros(Float64, plotM * length(decay))
         groups = zeros(Int, plotM * length(decay))
         for d in 1:length(decay)
-            data = data[o, d]
-            multi_indices = data["multi_indices"]
+            multi_indices = data[o, d]["multi_indices"]
             nmodes = length(multi_indices)
             M = min(maximum(length.(multi_indices)), plotM)
             max4mode[d, 1:M] = [maximum([multi_indices[j][k] for j in 1:nmodes]) for k in 1:M]
@@ -636,9 +634,9 @@ function produce_plots(;
 
         Legend(f_bar[1, 2], elements, labels, title)
 
-        data["decay"] = decay
-        data["order"] = order[o]
-        filename_plot = filename(data; add = "barplot_", folder = "plots", makepath = true) * ".png"
+        basedata["decay"] = decay
+        basedata["order"] = order[o]
+        filename_plot = filename(basedata; add = "barplot_", folder = "plots", makepath = true) * ".png"
         CairoMakie.save(filename_plot, f_bar)
         @info "modes bar plot for $cols saved under $filename_plot"
     end

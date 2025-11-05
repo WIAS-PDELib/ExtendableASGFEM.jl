@@ -14,4 +14,4 @@ The spatial discretization is based on the finite element package [ExtendableFEM
 
 ## Scripts/Examples
 
-- `scripts/poisson.jl`: Adaptive stochastic Galerkin FEM for the Poisson problem with stochastic diffusion coefficient
+- `scripts/poisson.jl`: Adaptive stochastic Galerkin FEM for (different formulations of) the Poisson problem with stochastic diffusion coefficient
