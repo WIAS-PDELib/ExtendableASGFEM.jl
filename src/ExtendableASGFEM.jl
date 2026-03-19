@@ -24,13 +24,13 @@ using ExtendableGrids: ExtendableGrids, Adjacency, BFaceFaces, CellFaces,
     atranspose, eval_trafo!, interpolate!,
     max_num_targets_per_source, num_cells, num_nodes,
     num_sources, num_targets, unique, update_trafo!
-using ExtendableSparse: ExtendableSparse, ExtendableSparseMatrix,
-    LUFactorization, flush!
+using ExtendableSparse: ExtendableSparse, ExtendableSparseMatrix, flush!
 using GridVisualize: GridVisualize, GridVisualizer, scalarplot, scalarplot!
 using IterativeSolvers: IterativeSolvers
 using Krylov: Krylov
 using LinearAlgebra: LinearAlgebra, SymTridiagonal, dot, eigvals, eigvecs,
-    ldiv!, mul!, norm
+    ldiv!, mul!, norm, lu
+using LinearSolve: LinearSolve, LUFactorization
 using Printf: Printf, @printf
 using Random: Random, rand!
 using SparseArrays: SparseArrays, SparseMatrixCSC, nzrange, rowvals

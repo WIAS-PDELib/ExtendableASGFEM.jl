@@ -38,13 +38,11 @@ function MyPreconditionerPrimal(A::ExtendableSparseMatrix{Tv, Ti}, bdofs, nmodes
         A[dof, dof] = 1.0e60
     end
     flush!(A)
-    LUA = LUFactorization(A)
+    LUA = lu(A.cscmatrix)
 
     return MyPreconditionerPrimal{Tv, typeof(LUA)}(LUA, DA, bdofs, nmodes)
 end
 
-
-#@inline LinearAlgebra.ldiv!(x::AbstractArray, C::ExtendableSparseMatrix, b::AbstractArray) = x = C\b
 @inline LinearAlgebra.ldiv!(C::MyPreconditionerPrimal, b) = ldiv!(b, C, b)
 @inline function LinearAlgebra.ldiv!(y, C::MyPreconditionerPrimal{Tv, FAC}, b) where {Tv, FAC}
     #copyto!(y, b)

@@ -34,18 +34,16 @@ function MyPreconditionerLogPrimal(A::ExtendableSparseMatrix{Tv, Ti}, bdofs, nmo
         DA[j] = A[j, j]
     end
 
-    # compute LU factorisation of S
+    # compute LU factorisation of A
     for dof in bdofs
         A[dof, dof] = 1.0e60
     end
     flush!(A)
-    LUA = LUFactorization(A)
+    LUA = lu(A.cscmatrix)
 
     return MyPreconditionerLogPrimal{Tv, typeof(LUA)}(LUA, DA, bdofs, nmodes)
 end
 
-
-#@inline LinearAlgebra.ldiv!(x::AbstractArray, C::ExtendableSparseMatrix, b::AbstractArray) = x = C\b
 @inline LinearAlgebra.ldiv!(C::MyPreconditionerLogPrimal, b) = ldiv!(b, C, b)
 @inline function LinearAlgebra.ldiv!(y, C::MyPreconditionerLogPrimal{Tv, FAC}, b) where {Tv, FAC}
     #copyto!(y, b)

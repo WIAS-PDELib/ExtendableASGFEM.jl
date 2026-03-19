@@ -22,7 +22,7 @@ struct MySystemLogDual{Tv, MT, VT, GT}
 end
 Base.size(S::MySystemLogDual) = S.nmodes .* (size(S.A.entries) .+ size(S.B.entries)[2])
 
-struct MyPreconditionerLogDual{Tv, FAC <: ExtendableSparse.AbstractFactorization}
+struct MyPreconditionerLogDual{Tv, FAC}
     LUS::FAC
     DA::Array{Tv, 1}
     temp::Array{Tv, 1}
@@ -55,7 +55,7 @@ function MyPreconditionerLogDual(A::ExtendableSparseMatrix{Tv, Ti}, B::Extendabl
 
     # compute LU factorisation of S
     flush!(S)
-    LUS = LUFactorization(S)
+    LUS = lu(S.cscmatrix)
 
     # temporary storage array for solver
     temp = zeros(Tv, size(B, 2))
