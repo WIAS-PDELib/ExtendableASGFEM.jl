@@ -31,7 +31,7 @@ makedocs(
         ],
         "Scripts" => [
             "poisson_script.md",
-        ]
+        ],
     ],
 )
 
