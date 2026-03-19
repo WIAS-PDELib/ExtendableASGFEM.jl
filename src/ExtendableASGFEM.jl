@@ -30,7 +30,6 @@ using IterativeSolvers: IterativeSolvers
 using Krylov: Krylov
 using LinearAlgebra: LinearAlgebra, SymTridiagonal, dot, eigvals, eigvecs,
     ldiv!, mul!, norm, lu
-using LinearSolve: LinearSolve, LUFactorization
 using Printf: Printf, @printf
 using Random: Random, rand!
 using SparseArrays: SparseArrays, SparseMatrixCSC, nzrange, rowvals
