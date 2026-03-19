@@ -92,7 +92,7 @@ function calculate_sampling_error(
         dim = size(SolutionSGFEM.FES_space[1].xgrid[Coordinates], 1),
         Msamples = maxm(C),
         parallel_sampling = true,
-        dimensionwise_error = false,
+        dimensionwise_error = true,
         energy_norm = true,
         debug = false,
         nsamples = 100
@@ -122,7 +122,7 @@ function calculate_sampling_error(
 
         ## solve problem for the current sample
         FESSampling = FES4sampling(problem, dim, xgrid, order)
-        sol_det[s] = ExtendableFEM.solve(PD, FESSampling; verbosity = debug ? 0 : -1)
+        sol_det[s] = ExtendableFEM.solve(PD, FESSampling; verbosity = debug ? 0 : -1, timeroutputs = :none)
 
         print(".")
     end

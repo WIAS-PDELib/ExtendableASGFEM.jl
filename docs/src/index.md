@@ -4,6 +4,18 @@ This package provides an implementation of the stochastic Galerkin finite elemen
 
 Spatial discretization is performed using the finite element packages [ExtendableFEM.jl](https://github.com/WIAS-PDELib/ExtendableFEM.jl) and [ExtendableFEMBase.jl](https://github.com/WIAS-PDELib/ExtendableFEMBase.jl).
 
+
+## Example Script
+
+A script for running adaptive SGFEM experiments is provided in `scripts/poisson.jl`. It supports:
+- Poisson problem with linear coefficient
+- Log-transformed Poisson problem with exponential coefficient
+- Dual formulation of the log-transformed problem (WIP)
+
+The script handles both spatial and stochastic adaptivity, and includes tools for result visualization and error analysis. For a detailed description of all available parameters and usage instructions, see [Script Documentation](poisson_script.md).
+
+
+
 ## References
 
 - [1]   "Adaptive stochastic Galerkin FEM"  
