@@ -379,6 +379,35 @@ function estimate(::Type{PoissonProblemPrimal}, sol::SGFEVector, C::AbstractStoc
     return eta4modes, eta4cell, multi_indices_extended #, f4modes
 end
 
+# TODO: Implement StokesProblemPrimal a posteriori estimator
+# This is a dummy estimator which enforces repeated spatial refinement
+function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStochasticCoefficient; rhs = nothing, bonus_quadorder = 1, tail_extension = 5)
+    FES = sol.FES_space[1]
+    xgrid = FES.xgrid
+    ncells = num_cells(xgrid)
+    TB = sol.TB
+    nmodes = TB.nmodes
+    multi_indices = TB.multi_indices
+
+    multi_indices_extended = add_boundary_modes(deepcopy(multi_indices); tail_extension = tail_extension)
+
+    nmodes_extended = length(multi_indices_extended)
+
+    inactive_else, inactive_bnd, inactive_bnd2, active_bnd, active_int = classify_modes(multi_indices_extended, multi_indices_extended[1:nmodes])
+
+    eta4modes = ones(Float64, nmodes_extended)
+    eta4cell = ones(Float64, ncells, nmodes_extended)
+
+    actives = union(active_int, active_bnd)
+    for j in 1:length(nmodes_extended)
+        if j in actives
+            eta4modes[j] = 10000
+        end
+    end
+
+    return eta4modes, eta4cell, multi_indices_extended
+end
+
 
 # function estimate(::Type{LogTransformedPoissonProblemDual}, sol::SGFEVector, C::AbstractStochasticCoefficient; problem = LogTransformedPoissonProblemPrimal, rhs = nothing, bonus_quadorder = 0)
 
