@@ -3,7 +3,7 @@
 ([source code](SOURCE_URL))
 
 runs AFEM loop for stochastic Poisson problem
- 
+
 usage:
 - run experiment: run(; problem = problem, kwargs...)
 - load results  : show_results(; kwargs...)
@@ -484,7 +484,7 @@ function produce_plots(;
     for o in 1:length(order), d in 1:length(decay)
         basedata["order"] = order[o]
         basedata["decay"] = decay[d]
-        data[o, d], ~ = produce_or_load(main, basedata, filename = filename, force = force)
+        data[o, d], ~ = produce_or_load(_main, basedata, filename = filename, force = force)
         xgrid = data[o, d]["solution"].FES_space[1].xgrid
         repair_grid!(xgrid)
         xgrid[BFaceRegions] .= 1
