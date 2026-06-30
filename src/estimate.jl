@@ -131,9 +131,13 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
     f4modes = zeros(Float64, nmodes_extended)
     eta4cell = zeros(Float64, ncells, nmodes_extended)
     eta4modes = zeros(Float64, nmodes_extended)
+    ζ_data1 = 0.0
+    ζ_data2 = 0.0
     function barrier(EG, L2G::L2GTransformer)
         lambda_temp = zeros(Float64, 1)
         gradam = zeros(Float64, 2)
+        am = zeros(Float64, 1)
+        kmL2 = 0.0
         ftemp = zeros(Float64, 1)
         sigmatemp = zeros(Float64, 1)
         x = zeros(Float64, 2)
@@ -145,6 +149,29 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
                 update_basis!(FEBasis_Δ, cell)
             end
             update_trafo!(L2G, cell)
+
+            # compute ζ_data
+            for qp in 1:nweights
+                eval_trafo!(x, L2G, xref[qp])
+                kmL2 = 0.0
+                for m in 1:M
+                    am[1] = 0
+                    get_am!(am, x, m, C)
+                    kmL2 += am[1]^2
+                end
+                rhs(ftemp, x)
+                ζ_data1 += ftemp[1]^2 * exp(2*kmL2) * weights[qp] * cellvolumes[cell]
+                for j in 1:nmodes
+                    lambda_temp = 0.0
+                    for d in 1:ndofs4cell_interp
+                        dof = (j - 1) * offset_interp + celldofs_interp[d, cell]
+                        lambda_temp += idvals[1, d, qp] * coeffs_interp[dof]
+                    end
+                    ζ_data2 += lambda_temp^2 * weights[qp] * cellvolumes[cell]
+                end
+            end
+
+
             for j in 1:nmodes_extended
                 ## h_T|| f_nu + \sigma_\nu ||
 
@@ -215,7 +242,7 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
         eta4modes[j] += sqrt(eta4modes[j]^2 + sum(view(jumps4face, :)))
     end
 
-    return eta4modes, eta4cell, multi_indices_extended #, f4modes
+    return eta4modes, eta4cell, multi_indices_extended, ζ_data1-ζ_data2 #, f4modes
 end
 
 

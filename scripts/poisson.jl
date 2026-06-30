@@ -225,6 +225,7 @@ function _main(
         estimate = zeros(Float64, 0),
         estimate_active = zeros(Float64, 0),
         estimate_tail = zeros(Float64, 0),
+        estimate_tail_data = zeros(Float64, 0),
         time_solve = zeros(Float64, 0),
         time_estimate = zeros(Float64, 0)
     )
@@ -233,7 +234,7 @@ function _main(
     lvl = 0
     while (true)
 
-        push!(df, [0 0 0 0 0 0 0 0 0 0 0])
+        push!(df, [0 0 0 0 0 0 0 0 0 0 0 0])
 
         ###############################
         ## stochastic discretisation ##
@@ -300,14 +301,15 @@ function _main(
         ## error estimator
         tail_extension = data["tail_extension"]
         if use_equilibration_estimator
-            time_estimate = @elapsed η4modes, η4cells, multi_indices_extended = estimate_equilibration(problem, sol, C; rhs = f!, bonus_quadorder = max(bonus_quadorder_f, bonus_quadorder_a), tail_extension = tail_extension)
+            time_estimate = @elapsed η4modes, η4cells, multi_indices_extended, ζ_data = estimate_equilibration(problem, sol, C; rhs = f!, bonus_quadorder = max(bonus_quadorder_f, bonus_quadorder_a), tail_extension = tail_extension)
         else
-            time_estimate = @elapsed η4modes, η4cells, multi_indices_extended = estimate(problem, sol, C; rhs = f!, bonus_quadorder = max(bonus_quadorder_f, bonus_quadorder_a), tail_extension = tail_extension)
+            time_estimate = @elapsed η4modes, η4cells, multi_indices_extended, ζ_data = estimate(problem, sol, C; rhs = f!, bonus_quadorder = max(bonus_quadorder_f, bonus_quadorder_a), tail_extension = tail_extension)
         end
         for j in 1:length(multi_indices_extended)
             @info "mode = $(multi_indices_extended[j]) | error = $(η4modes[j])" # \t| f4mode = $(j <= length(multi_indices) ? f4modes[j] : 0)"
         end
         df[lvl, :time_estimate] = time_estimate
+        @info ζ_data
 
         ## compute norms of solution modes and grad(am)
         # nmodes = length(multi_indices)
@@ -381,6 +383,7 @@ function _main(
         df[lvl, :estimate] = sqrt(sum(η4modes .^ 2))
         df[lvl, :estimate_active] = sqrt(EstimatorInterior)
         df[lvl, :estimate_tail] = sqrt(EstimatorBoundary)
+        df[lvl, :estimate_tail_data] = sqrt(ζ_data)
         data["results"] = df
         data["solution"] = sol
         data["multi_indices"] = multi_indices
@@ -389,7 +392,7 @@ function _main(
             break
         end
 
-        if EstimatorInterior > factor_tail * EstimatorBoundary
+        if EstimatorInterior > factor_tail * EstimatorBoundary + ζ_data
             println("...spatial refinement")
             if θ_spatial >= 1
                 ## uniform mesh refinement
@@ -464,7 +467,7 @@ function produce_plots(;
     elseif template == :convergence_with_L2
         cols = [:estimate, :exact_error_stress, :exact_error]
     elseif template == :active_vs_tail
-        cols = [:estimate_active, :estimate_tail]
+        cols = [:estimate_active, :estimate_tail, :estimate_tail_data]
     elseif template == :dofs
         cols = [:ndofs_space, :nmodes, :ndofs_all]
         xscale = nothing
@@ -484,7 +487,7 @@ function produce_plots(;
     for o in 1:length(order), d in 1:length(decay)
         basedata["order"] = order[o]
         basedata["decay"] = decay[d]
-        data[o, d], ~ = produce_or_load(main, basedata, filename = filename, force = force)
+        data[o, d], ~ = produce_or_load(_main, basedata, filename = filename, force = force)
         xgrid = data[o, d]["solution"].FES_space[1].xgrid
         repair_grid!(xgrid)
         xgrid[BFaceRegions] .= 1
@@ -510,6 +513,8 @@ function produce_plots(;
                 ylabel = L"\eta"
             elseif cols[1] == :estimate_tail
                 ylabel = L"\eta_\text{tail}"
+            elseif cols[1] == :estimate_tail
+                ylabel = L"\zeta_\text{data}"
             elseif cols[1] == :estimate_active
                 ylabel = L"\eta_\text{active}"
             end
@@ -568,6 +573,11 @@ function produce_plots(;
                             plotdata .*= scaling_factor
                         end
                         label = L"\eta(\partial_h \Lambda)"
+                    elseif cols[c] == :estimate_tail_data
+                        if scaling_factor !== nothing
+                            plotdata .*= scaling_factor
+                        end
+                        label = L"\zeta_\text{data}(\Lambda)"
                     elseif cols[c] == :estimate_active
                         if scaling_factor !== nothing
                             plotdata .*= scaling_factor
