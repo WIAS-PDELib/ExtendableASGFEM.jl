@@ -1,92 +1,45 @@
-## kernel for L2 error of stress, i.e || grad(u) - grad(u_h) ||
-function data_error_stress(::Type{<:PoissonProblemPrimal}, dim, C::AbstractStochasticCoefficient, sample_pointer)
-    function closure(result, input, qpinfo)
-        result[1] = 1
-        if dim == 1
-            result[2] = (input[1] - input[2])^2
-        elseif dim == 2
-            result[2] = (input[1] - input[3])^2 + (input[2] - input[4])^2
-        end
-        result[1] *= result[2]
-        return nothing
+using PythonPlot
+
+function create_squared_l2_dist_closure!(dim = nothing)
+    N = !isnothing(dim) ? dim : trunc(Int, length(input) / 2)
+    return function (result, input, _)
+        return result[1] = sum((input[1:N] - input[(N + 1):(N << 1)]) .^ 2)
     end
-    return closure, [grad(1), grad(2)], [(1, 1), (2, 1)]
+end
+
+## kernel for L2 error of stress, i.e || grad(u) - grad(u_h) ||
+function data_error_stress(::Union{Type{<:PoissonProblemPrimal}, Type{<:LogTransformedPoissonProblemPrimal}, Type{<:StokesProblemPrimal}}, dim, C::AbstractStochasticCoefficient, sample_pointer)
+    return create_squared_l2_dist_closure!(dim), [grad(1), grad(2)], [(1, 1), (2, 1)]
 end
 
 function data_error_stress(::Type{<:LogTransformedPoissonProblemDual}, dim, C::AbstractStochasticCoefficient, sample_pointer)
-    function closure(result, input, qpinfo)
-        result[1] = 1
-        if dim == 1
-            result[2] = (input[1] - input[2])^2
-        elseif dim == 2
-            result[2] = (input[1] - input[3])^2 + (input[2] - input[4])^2
-        end
-        result[1] *= result[2]
-        return nothing
-    end
-    return closure, [id(1), id(2)], [(1, 1), (2, 1)]
-end
-
-function data_error_stress(::Union{Type{<:StokesProblemPrimal}, Type{<:LogTransformedPoissonProblemPrimal}}, dim, C::AbstractStochasticCoefficient, sample_pointer)
-    function closure(result, input, qpinfo)
-        result[1] = 1
-        if dim == 1
-            result[2] = (input[1] - input[2])^2
-        elseif dim == 2
-            result[2] = (input[1] - input[3])^2 + (input[2] - input[4])^2
-        end
-        result[1] *= result[2]
-        return nothing
-    end
-    return closure, [grad(1), grad(2)], [(1, 1), (2, 1)]
+    return create_squared_l2_dist_closure!(dim), [id(1), id(2)], [(1, 1), (2, 1)]
 end
 
 ## kernel for L2 error || u - u_h ||
-function data_error_u(::Union{Type{<:PoissonProblemPrimal}, Type{<:LogTransformedPoissonProblemPrimal}}, dim, C::AbstractStochasticCoefficient, sample_pointer)
-    function closure(result, input, qpinfo)
-        result[1] = (input[1] - input[2])^2
-        return nothing
-    end
-    return closure, [id(1), id(2)], [(1, 1), (2, 1)]
+function data_error_u(::Union{Type{<:PoissonProblemPrimal}, Type{<:LogTransformedPoissonProblemPrimal}, Type{<:StokesProblemPrimal}}, dim, C::AbstractStochasticCoefficient, sample_pointer)
+    return create_squared_l2_dist_closure!(dim), [id(1), id(2)], [(1, 1), (2, 1)]
 end
 
 function data_error_u(::Type{<:LogTransformedPoissonProblemDual}, dim, C::AbstractStochasticCoefficient, sample_pointer)
-    function closure(result, input, qpinfo)
-        result[1] = (input[1] - input[2])^2
-        return nothing
-    end
-    return closure, [id(1), id(2)], [(1, 2), (2, 1)]
+    return create_squared_l2_dist_closure!(dim), [id(1), id(2)], [(1, 2), (2, 1)]
 end
 
-function data_error_u(::Type{<:StokesProblemPrimal}, dim, C::AbstractStochasticCoefficient, sample_pointer)
-    function closure(result, input, qpinfo)
-        result[1] = (input[1] - input[2])^2
-        return nothing
-    end
-    return closure, [id(1), id(2)], [(1, 1), (2, 1)]
-end
-
+## kernel for L2 error || p - p_h ||
 function data_error_p(::Type{<:StokesProblemPrimal}, dim, C::AbstractStochasticCoefficient, sample_pointer)
-    function closure(result, input, qpinfo)
-        result[1] = (input[1] - input[2])^2
-        return nothing
-    end
-    return closure, [id(1), id(2)], [(1, 2), (2, 2)]
+    return create_squared_l2_dist_closure!(dim), [id(1), id(2)], [(1, 2), (2, 2)]
 end
-
-FES4sampling(::Type{PoissonProblemPrimal}, dim, xgrid, order) = [FESpace{H1Pk{1, dim, order}}(xgrid)]
-FES4sampling(::Type{LogTransformedPoissonProblemPrimal}, dim, xgrid, order) = [FESpace{H1Pk{1, dim, order}}(xgrid)]
-FES4sampling(::Type{LogTransformedPoissonProblemDual}, dim, xgrid, order) = [FESpace{HDIVRTk{dim, order}}(xgrid), FESpace{H1Pk{1, dim, order}}(xgrid; broken = true)]
-FES4sampling(::Type{StokesProblemPrimal}, _, xgrid, order) = [FESpace{H1P2B{2, 2}}(xgrid), FESpace{L2P1{1}}(xgrid)]
 
 u_with_stress_metric_configuration = [
     Dict(
         "name" => "L2stress",
         "closure" => data_error_stress,
+        "dim" => 4,
     ),
     Dict(
         "name" => "L2u",
         "closure" => data_error_u,
+        "dim" => 2,
     ),
 ]
 
@@ -94,16 +47,25 @@ stokes_metrics_configuration = [
     Dict(
         "name" => "L2stress",
         "closure" => data_error_stress,
+        "dim" => 4,
     ),
     Dict(
         "name" => "L2u",
         "closure" => data_error_u,
+        "dim" => 2,
     ),
     Dict(
         "name" => "L2p",
         "closure" => data_error_p,
+        "dim" => 1,
     ),
 ]
+
+
+FES4sampling(::Type{PoissonProblemPrimal}, dim, xgrid, order) = [FESpace{H1Pk{1, dim, order}}(xgrid)]
+FES4sampling(::Type{LogTransformedPoissonProblemPrimal}, dim, xgrid, order) = [FESpace{H1Pk{1, dim, order}}(xgrid)]
+FES4sampling(::Type{LogTransformedPoissonProblemDual}, dim, xgrid, order) = [FESpace{HDIVRTk{dim, order}}(xgrid), FESpace{H1Pk{1, dim, order}}(xgrid; broken = true)]
+FES4sampling(::Type{StokesProblemPrimal}, _, xgrid, _) = [FESpace{H1P2B{2, 2}}(xgrid), FESpace{L2P1{1}}(xgrid)]
 
 """
 $(TYPEDSIGNATURES)
@@ -142,7 +104,7 @@ function calculate_sampling_error(
         SolutionSGFEM::SGFEVector,
         C::AbstractStochasticCoefficient;
         problem = LogTransformedPoissonProblemPrimal,
-        bonus_quadorder_a = 10,
+        bonus_quadorder_a = 2,
         bonus_quadorder_f = 0,
         order = 2,
         rhs = nothing,
@@ -277,14 +239,16 @@ end
 
 function calculate_sampling_error_2(
         SolutionSGFEM::SGFEVector,
+        rhs!::Function,
         C::AbstractStochasticCoefficient;
         metrics_configurations = u_with_stress_metric_configuration,
         problem = LogTransformedPoissonProblemPrimal,
-        bonus_quadorder_a = 10,
+        (exact_boundary!) = nothing,
+        boundary_regions = 1:4,
+        dim = size(SolutionSGFEM.FES_space[1].xgrid[Coordinates], 1),
+        bonus_quadorder_a = 2,
         bonus_quadorder_f = 0,
         order = 2,
-        rhs = nothing,
-        dim = size(SolutionSGFEM.FES_space[1].xgrid[Coordinates], 1),
         Msamples = maxm(C),
         parallel_sampling = true,
         dimensionwise_error = true,
@@ -299,9 +263,7 @@ function calculate_sampling_error_2(
     xgrid = FES[1].xgrid
     sol_sgfem = SolutionSGFEM.FEV
     TensorBasis = SolutionSGFEM.TB
-    multi_indices::Array{Array{Int, 1}, 1} = TensorBasis.multi_indices
     M::Int = maxlength_multiindices(TensorBasis)
-    nmodes = num_multiindices(TensorBasis)
 
     ## generate samples
     Samples, weights = sample_distribution(TensorBasis, nsamples; M = Msamples, Mweights = Msamples)
@@ -311,9 +273,17 @@ function calculate_sampling_error_2(
 
     ## compute deterministic solutions (in parallel)
     Threads.@threads for s in 1:nsamples
-
         ## deterministic problem description
-        PD, u = deterministic_problem(problem, C, Samples[:, s]; rhs = rhs, bonus_quadorder_a = bonus_quadorder_a, bonus_quadorder_f = bonus_quadorder_f)
+        PD, _ = deterministic_problem(
+            problem,
+            rhs!,
+            C,
+            Samples[:, s];
+            exact_boundary!,
+            boundary_regions,
+            bonus_quadorder_a,
+            bonus_quadorder_f
+        )
 
         ## solve problem for the current sample
         FESSampling = FES4sampling(problem, dim, xgrid, order)
@@ -322,6 +292,8 @@ function calculate_sampling_error_2(
     end
     println(" MC samples solved")
 
+    ExtendableFEM.plot([id(1), id(2)], sol_det[end]; Plotter = PythonPlot)
+
     ## compute errors for each sample (sequentially)
     M0 = dimensionwise_error ? 0 : M
     error_per_run = Dict()
@@ -329,13 +301,16 @@ function calculate_sampling_error_2(
     csample = Samples[:, 1]
     metric_names = [configuration["name"] for configuration in metrics_configurations]
     for configuration in metrics_configurations
-        kernel!, input, ids = configuration["closure"](problem, dim, C, csample)
+        kernel!, input, ids = configuration["closure"](problem, configuration["dim"], C, csample)
         push!(
             metrics,
             Dict(
                 "name" => configuration["name"],
                 "ids" => ids,
-                "integrator" => ItemIntegrator(kernel!, input; resultdim = dim, quadorder = 2 * order),
+                "integrator" => ItemIntegrator(
+                    kernel!, input;
+                    resultdim = configuration["dim"], quadorder = 2 * order + 1
+                ),
                 "solution" => Array{FEVectorBlock, 1}(undef, 2),
             ),
         )
@@ -376,8 +351,9 @@ function calculate_sampling_error_2(
         error[name_weighted] = zeros(Float64, M + 1)
         error[name_uniform] = zeros(Float64, M + 1)
         for s in 1:nsamples
-            error[name_uniform] .+= view(error_per_run[name], :, s)
-            error[name_weighted] .+= view(error_per_run[name], :, s) * weights[s]
+            slice = view(error_per_run[name], :, s)
+            error[name_uniform] .+= slice
+            error[name_weighted] .+= slice * weights[s]
         end
         for m in 1:(M + 1)
             error[name_uniform][m] /= nsamples
@@ -385,5 +361,6 @@ function calculate_sampling_error_2(
         end
     end
 
-    return [error["$(name)_weighted"] for name in metric_names]..., [error["$(name)_uniform"] for name in metric_names]...
+    return [error["$(name)_weighted"] for name in metric_names]...,
+        [error["$(name)_uniform"] for name in metric_names]...
 end

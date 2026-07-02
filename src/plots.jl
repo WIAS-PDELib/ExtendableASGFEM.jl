@@ -58,5 +58,6 @@ function plot_basis(ONB::ONBasis{T, OBT, npoly, nquad}; Plotter = nothing, resol
     for j in 1:npoly
         scalarplot!(p[1, 1], xgrid, vals4xref; clear = false, Plotter = Plotter, label = "$j", xlimits = (-1, 1), limits = (-4, 4))
     end
+    GridVisualize.reveal(p)
     return
 end

@@ -1,3 +1,5 @@
+# Stochastisches Beispiel mit Null Randdaten
+# Qu & Xu Bsp. 1 nachcoden -> coefficients.jl dazu definieren, an inhomogene Randdaten denken -> Muss implementiert werden
 #=
 
 ([source code](SOURCE_URL))
@@ -27,20 +29,32 @@ using ExtendableGrids
 using GridVisualize
 using LaTeXStrings
 using Pkg
+using Symbolics
 using UnicodePlots
 
-function f!(result, qpinfo)
-    x = qpinfo.x[1]
-    y = qpinfo.x[2]
-    result[1] = 5(x^4) + 12(x^2) * ((-1 + x)^2) * (-1 + y) + 12(x^2) * ((-1 + x)^2) * y + 4(x^2) * y * ((-1 + y)^2) + 4(x^2) * (-1 + y) * (y^2) + 4((-1 + x)^2) * (-1 + y) * (y^2) + 4((-1 + x)^2) * y * ((-1 + y)^2) + 16x * (-1 + x) * (-1 + y) * (y^2) + 16x * (-1 + x) * y * ((-1 + y)^2)
-    result[2] = 5(y^4) - 4x * ((-1 + x)^2) * ((-1 + y)^2) - 4(-1 + x) * (x^2) * ((-1 + y)^2) - 4x * ((-1 + x)^2) * (y^2) - 4(-1 + x) * (x^2) * (y^2) - 16(-1 + x) * (x^2) * y * (-1 + y) - 16x * ((-1 + x)^2) * y * (-1 + y) - 12x * (y^2) * ((-1 + y)^2) - 12(-1 + x) * (y^2) * ((-1 + y)^2)
-    #result[1] = 1000 * (1 - x) * x * y * (1 - y)
-    #result[2] = 1000 * (1 - x) * x * y * (1 - y)
-    #result[1] = sin(x) * sin(y) * cos(pi * x / 2) * cos(pi * y / 2)
-    #ξ = x^2 * (x - 1)^2 * y^2 * (y - 1)^2
-    #result[1] = - (1 / 6) * x^3
-    #result[2] = (1 / 6) * y^3
-    return nothing
+function prepare_data(C::AbstractStochasticCoefficient, sample_pointer)
+    @variables ν x y
+
+    ξ = x^2 * (x - 1)^2 * y^2 * (y - 1)^2
+    ∇ξ = Symbolics.gradient(ξ, [x, y])
+    u = [-∇ξ[2], ∇ξ[1]]
+    p = x^5 + y^5 - 1 / 3
+    ∇u = Symbolics.jacobian(u, [x, y])
+    Δu = [
+        Symbolics.derivative(∇u[1, 1], x) + Symbolics.derivative(∇u[1, 2], y),
+        Symbolics.derivative(∇u[2, 1], x) + Symbolics.derivative(∇u[2, 2], y),
+    ]
+    ∇p = Symbolics.gradient(p, [x, y])
+    f = -ν * Δu + ∇p
+    eval_f! = build_function(f, ν, x, y, expression = Val{false})[2]
+
+    get_ν! = get_a!(C)
+    ν = zeros(1)
+    return function (result, qpinfo)
+        get_ν!(ν, qpinfo.x, sample_pointer)
+        eval_f!(result, ν[1], qpinfo.x...)
+        return nothing
+    end
 end
 
 function filename(data; folder = "data", add = "", makepath = false)
@@ -71,7 +85,7 @@ default_args = Dict(
     "mean" => 1.0,
     "maxm" => 150,
     "bonus_quadorder_a" => 2,
-    "f" => f!,
+    "f" => nothing,
     "bonus_quadorder_f" => 0,
     "θ_stochastic" => 0.5,
     "θ_spatial" => 0.5,
@@ -151,7 +165,7 @@ function _main(
         data = nothing;
         debug = false,
         plot_solution = false,
-        Plotter = nothing,
+        Plotter = CairoMakie,
         kwargs...
     )
     if isnothing(data)
@@ -173,7 +187,6 @@ function _main(
     θ_spatial = data["θ_spatial"]
     multi_indices = Array{Array{Int, 1}, 1}(data["initial_modes"])
     nsamples = data["nsamples"]
-    f! = data["f"]
     bonus_quadorder_a = data["bonus_quadorder_a"]
     bonus_quadorder_f = data["bonus_quadorder_f"]
     factor_tail = data["factor_tail"]
@@ -241,9 +254,12 @@ function _main(
         FES = [FESpace{FETypes[1]}(xgrid), FESpace{FETypes[2]}(xgrid)]
         unames = ["u", "p"]
 
+        Samples, _ = sample_distribution(TensorBasis, 2; M = 2, Mweights = 2)
+        f! = isnothing(data["f"]) ? prepare_data(C, Samples) : data["f"]
+
         sol = SGFEVector(FES, TensorBasis; active_modes = 1:length(multi_indices), unames = unames)
 
-        time_solve = @elapsed bdofs = solve!(problem, sol, C; rhs = (f!), bonus_quadorder_a = bonus_quadorder_a, bonus_quadorder_f = bonus_quadorder_f, use_iterative_solver = use_iterative_solver, debug = debug)
+        time_solve = @elapsed bdofs = solve!(problem, sol, C; (rhs!) = (f!), bonus_quadorder_a = bonus_quadorder_a, bonus_quadorder_f = bonus_quadorder_f, use_iterative_solver = use_iterative_solver)
         df[lvl, :time_solve] = time_solve
 
         if isnothing(Plotter) && plot_solution
@@ -251,13 +267,15 @@ function _main(
                 if debug
                     @show extrema(view(sol[j]))
                 end
-                println(stdout, unicode_scalarplot(sol[j]; title = "MI $(multi_indices[j])"))
+                println(stdout, unicode_scalarplot(sol[1]; title = "MI $(multi_indices[1])"))
             end
         elseif plot_solution
-            plot_modes(sol; Plotter = Plotter, ncols = 4)
+            p = plot_modes(sol; Plotter = CairoMakie, ncols = 4)
+            display(p)
         end
+
         weightederrorH1, weightederrorL2u, weightederrorL2p, uniformerrorH1, uniformerrorL2u, uniformerrorL2p = calculate_sampling_error_2(
-            sol, C; problem = problem, metrics_configurations = stokes_metrics_configuration, rhs = (f!), order = order + 1, nsamples, debug
+            sol, C; problem, metrics_configurations = stokes_metrics_configuration, (rhs!) = (f!), order = order + 1, nsamples, debug
         )
 
         tail_extension = data["tail_extension"]
@@ -430,7 +448,7 @@ function produce_plots(;
                 ylabel = L"|| u - u_h ||_{L^2}"
             elseif cols[1] == :exact_error_stress
                 ylabel = L"|| u - u_h ||_A"
-            elseif col[1] == :exect_error_p
+            elseif col[1] == :exact_error_p
                 ylabel = L"|| p - p_h ||_{L^2}"
             elseif cols[1] == :estimate
                 ylabel = L"\eta"

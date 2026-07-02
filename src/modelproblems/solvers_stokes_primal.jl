@@ -22,11 +22,6 @@ struct StokesPrimalPreconditioner{Tv, FAC}
 end
 
 function stokesPrimalPreconditioner(A0::ExtendableSparseMatrix{Tv, Ti}, B::ExtendableSparseMatrix{Tv, Ti}, bdofs, nmodes, vsize) where {Tv, Ti}
-    #for dof in bdofs
-    #    A0[dof, dof] = 1.0e60
-    #end
-    #flush!(A0)
-
     DA::Array{Tv, 1} = zeros(Tv, size(A0, 1))
     for j in 1:length(DA)
         DA[j] = A0[j, j]
@@ -52,7 +47,6 @@ function stokesPrimalPreconditioner(A0::ExtendableSparseMatrix{Tv, Ti}, B::Exten
     # compute LU factorisation of S
     flush!(S)
     LUS = lu(S.cscmatrix)
-    #LUA = lu(A0.cscmatrix)
 
     # temporary storage array for solver
     temp = zeros(Tv, size(B, 2))
@@ -67,6 +61,7 @@ end
     DA::Array{Tv, 1} = C.DA
     temp::Array{Tv, 1} = C.temp
     nmodes::Int = C.nmodes
+    bdofs = C.bdofs
     vsize::Array{Int, 1} = C.vsize
     for mu in 1:nmodes
         # upper left block of preconditioner (I ⊗ A_diag)
@@ -82,6 +77,11 @@ end
         else
             ldiv!(temp, C.LUS, view(b, a:c))
             y[a:c] .= temp
+        end
+
+        a = (mu - 1) * vsize[1] + 1
+        for dof in bdofs
+            y[a + dof - 1] = 0
         end
     end
 
@@ -138,8 +138,9 @@ function LinearAlgebra.mul!(Ax::Vector{Tv}, S::StokesPrimal{Tv, MT, VT, GT}, x) 
         end
 
         for dof in bdofs
-            Ax[a + dof - 1] = 0
+            Ax[a + dof - 1] = (mu == 1) ? 1.0e60 : 0
         end
+        Ax[nmodes * vsize[1] + 1] = 0 # Wegen pressure
     end
 
     return nothing
@@ -148,18 +149,13 @@ end
 Base.eltype(S::StokesPrimal) = typeof(S).parameters[1]
 Base.size(S::StokesPrimal) = S.nmodes .* (size(S.A0.entries) .+ size(S.B.entries)[2])
 
-function solve_stokes_primal!(SolutionSGFEM::SGFEVector, A0, A, B, b0, G, nmodes, bfac; atol = 1.0e-14, rtol = 1.0e-14)
+function solve_stokes_primal!(
+        SolutionSGFEM::SGFEVector, A0, A, B, b0, G, nmodes, bdofs;
+        atol = 1.0e-14, rtol = 1.0e-14
+    )
     ## create fullmatrix-free matrix evaluator
     @info "Solving StochasticFEM iteratively and matrix-free (ndofs = $(length(SolutionSGFEM.entries)))..."
     vsize = [SolutionSGFEM[1].FES.ndofs, SolutionSGFEM[nmodes + 1].FES.ndofs]
-    ## boundary data
-    bfacedofs = SolutionSGFEM.FES_space[1][BFaceDofs]
-    nbfaces = num_sources(bfacedofs)
-    bdofs = []
-    for bface in 1:nbfaces
-        append!(bdofs, view(bfacedofs, :, bface))
-    end
-    bdofs = unique(bdofs)
 
     S = StokesPrimal{eltype(G), typeof(A0), typeof(b0), typeof(G)}(A0, A, B, G, bdofs, nmodes, vsize)
     @info "...initializing Preconditioner"
@@ -167,42 +163,46 @@ function solve_stokes_primal!(SolutionSGFEM::SGFEVector, A0, A, B, b0, G, nmodes
 
     ## right-hand side
     b = deepcopy(SolutionSGFEM)
-    fill!(b.entries, 0)
-    addblock!(b[1], b0[1]; factor = bfac)
-    for m in 1:nmodes
-        for dof in bdofs
-            b[m][dof] = 0
-        end
+    addblock!(b[1], b0[1])
+    for dof in bdofs
+        b[1][dof] *= 1.0e60
     end
 
     ## solve
+    addblock!(SolutionSGFEM[1], b0[1])
     @info "...starting right-conditioned GMRES"
     x, history = Krylov.gmres(S, b.entries, SolutionSGFEM.entries; ldiv = true, atol = atol, rtol = rtol, M = P)
     SolutionSGFEM.entries .= x
     @show history
 
-    ## Pressure mean von pressure modes abziehen, damit Vorfaktor wie bei use_iterative_solver=false ist.
-    ## https://wias-pdelib.github.io/ExtendableFEM.jl/stable/module_examples/Example252_NSEPlanarLatticeFlow/
+    # enforce uniqueness of the pressure solution
     xgrid = SolutionSGFEM[1].FES.xgrid
     for i in 1:nmodes
         pintegrate = ItemIntegrator([id(1)])
-        pmean = sum(ExtendableFEM.evaluate(pintegrate, [SolutionSGFEM.FEVectorBlocks[nmodes + i]])) / sum(xgrid[CellVolumes])
+        pmean = sum(ExtendableFEM.evaluate(pintegrate, [SolutionSGFEM.FEVectorBlocks[nmodes + i]])) /
+            sum(xgrid[CellVolumes])
         view(SolutionSGFEM.FEVectorBlocks[nmodes + i]) .-= pmean
     end
 
     ## check residual
+    FES = SolutionSGFEM.FES_space
     Ax = zero(SolutionSGFEM.entries)
     mul!(Ax, S, SolutionSGFEM.entries)
-    @info "solver residual = $(sqrt(sum((Ax - b.entries) .^ 2)))"
+    residual = Ax - b.entries
+    a = FES[1].ndofs
+    b = FES[2].ndofs
+    for m in 1:nmodes
+        residual[a * (m - 1) .+ bdofs] .= 0
+        residual[a * nmodes + b * (m - 1) + 1] = 0
+    end
+    @info "linear residual = $(sqrt(sum(residual .^ 2)))"
 
-    return bdofs
+    return nothing
 end
 
-function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, A, B, b0, G, nmodes, rhsfac)
-    M::Int = length(A) # size(G,1) / nmodes
+function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, A, B, b0, G, nmodes, bdofs)
+    M::Int = length(A)
     FES = SolutionSGFEM.FES_space
-    multi_indices = SolutionSGFEM.TB.multi_indices
-    nmodes = num_multiindices(SolutionSGFEM)
     bigFES = Array{FESpace{Float64, Int32}, 1}([FES[1] for j in 1:nmodes])
     append!(bigFES, [FES[2] for j in 1:nmodes])
 
@@ -229,38 +229,43 @@ function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, A, B, b0, G, n
     end
     flush!(bigS.entries)
 
-    ## boundary data
-    bfacedofs = FES[1][BFaceDofs]
-    nbfaces = num_sources(bfacedofs)
-    bdofs = []
-    for bface in 1:nbfaces
-        append!(bdofs, view(bfacedofs, :, bface))
-    end
-    unique!(bdofs)
-
-    for m in 1:nmodes
-        for dof in bdofs
+    ## boundary condition for bigS
+    for dof in bdofs
+        bigb[1][dof] *= 1.0e60
+        for m in 1:nmodes
             bigS[m, m][dof, dof] = 1.0e60
-            bigb[m][dof] = 0
         end
+    end
+    flush!(bigS.entries)
+
+    ## include integral mean condition for each pressure block
+    for m in 1:nmodes
+        bigS[nmodes + m, nmodes + m][1, 1] = 1.0e60
+        bigb[nmodes + m][1] = 0
     end
     flush!(bigS.entries)
 
     @info "Solving StochasticFEM with full matrix..."
     SolutionSGFEM.entries .= bigS.entries \ bigb.entries
 
+    ## enforce uniqueness of the pressure solution
     xgrid = SolutionSGFEM[1].FES.xgrid
     for i in 1:nmodes
-        pintegrate = ItemIntegrator([id(1)])
-        pmean = sum(ExtendableFEM.evaluate(pintegrate, [SolutionSGFEM.FEVectorBlocks[nmodes + i]])) / sum(xgrid[CellVolumes])
+        p_integrator = ItemIntegrator([id(1)])
+        pmean = sum(ExtendableFEM.evaluate(p_integrator, [SolutionSGFEM.FEVectorBlocks[nmodes + i]])) /
+            sum(xgrid[CellVolumes])
         view(SolutionSGFEM.FEVectorBlocks[nmodes + i]) .-= pmean
     end
 
+    ## calculate residual
     residual = bigS.entries * SolutionSGFEM.entries .- bigb.entries
+    a = FES[1].ndofs
+    b = FES[2].ndofs
     for m in 1:nmodes
-        residual[FES[1].ndofs * (m - 1) .+ bdofs] .= 0
+        residual[a * (m - 1) .+ bdofs] .= 0
+        residual[a * nmodes + b * (m - 1) + 1] = 0
     end
-    println("linear residual = $(sqrt(sum(residual .^ 2)))")
+    @info "linear residual = $(sqrt(sum(residual .^ 2)))"
 
-    return bdofs
+    return nothing
 end

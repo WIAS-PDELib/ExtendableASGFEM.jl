@@ -381,6 +381,7 @@ end
 
 # TODO: Implement StokesProblemPrimal a posteriori estimator
 # This is a dummy estimator which enforces repeated spatial refinement
+level = 0
 function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStochasticCoefficient; rhs = nothing, bonus_quadorder = 1, tail_extension = 5)
     FES = sol.FES_space[1]
     xgrid = FES.xgrid
@@ -401,9 +402,10 @@ function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStoch
     actives = union(active_int, active_bnd)
     for j in 1:length(nmodes_extended)
         if j in actives
-            eta4modes[j] = 10000
+            eta4modes[j] = ((level % 2) == 0) ? 10000 : 0
         end
     end
+    global level += 1
 
     return eta4modes, eta4cell, multi_indices_extended
 end
