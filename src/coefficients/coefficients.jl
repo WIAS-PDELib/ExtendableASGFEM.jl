@@ -104,6 +104,14 @@ function plot_am(xgrid::ExtendableGrid, m, SC::AbstractStochasticCoefficient; Pl
     return scalarplot(xgrid, I.entries; Plotter, kwargs...)
 end
 
+function plot_a(xgrid::ExtendableGrid, SC::AbstractStochasticCoefficient, y = ones(maxm(SC)); Plotter = nothing, kwargs...)
+    FES = FESpace{H1P1{1}}(xgrid)
+    I = FEVector(FES)
+    a! = get_a!(SC)
+    ExtendableFEMBase.interpolate!(I[1], (result, qpinfo) -> a!(result, qpinfo.x, y))
+    return scalarplot(xgrid, I.entries; Plotter, kwargs...)
+end
+
 
 """
 $(TYPEDSIGNATURES)

@@ -116,17 +116,18 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
     ## prepare expansion of coefficient
     expa_PCE!, lambda_μ! = expa_PCE_mop(TB_extended, C; factor = -1.0)
 
-    ## interpolate <e^-a f, H_nu>
-    FES_interp = FESpace{H1Pk{1, 2, order}}(xgrid)
+    ## interpolate <e^-a, H_nu>
+    @info "interpolating <e^-a, H_nu> for all modes with quadorder = $quadorder"
+    FES_interp = FESpace{H1Pk{1, 2, quadorder}}(xgrid)
     FEBasis_id = FEEvaluator(FES_interp, ExtendableFEMBase.Identity, qf)
     idvals = FEBasis_id.cvals
     expaf_interpolations = FEVector([FES_interp for j in 1:nmodes_extended])
     for j in 1:nmodes_extended
-        interpolate!(expaf_interpolations[j], (result, qpinfo) -> lambda_μ!(result, qpinfo.x, j); quadorder = quadorder)
+        interpolate!(expaf_interpolations[j], (result, qpinfo) -> lambda_μ!(result, qpinfo.x, j); quadorder = 2*quadorder)
     end
     offset_interp = FES_interp.ndofs
     celldofs_interp = FES_interp[CellDofs]
-    ndofs4cell_interp = get_ndofs(ON_CELLS, H1Pk{1, 2, order}, EG)
+    ndofs4cell_interp = get_ndofs(ON_CELLS, H1Pk{1, 2, quadorder}, EG)
     coeffs_interp = expaf_interpolations.entries
 
     ## compute volume terms
@@ -242,6 +243,14 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
             eta4cell[cell, j] += jumps4face[cellfaces[f, cell]]
         end
         eta4modes[j] += sqrt(eta4modes[j]^2 + sum(view(jumps4face, :)))
+    end
+
+    ζ_data = ζ_data1-ζ_data2
+    if ζ_data < 0
+        @warn "negative data truncation error estimate = $(ζ_data) (ζ_data1 = $(ζ_data1), ζ_data2 = $(ζ_data2))
+            This is likely due to insufficient quadrature order for the interpolation of <e^-a, H_nu>."
+    else
+        @info "estimated data truncation error = $(ζ_data) (ζ_data1 = $(ζ_data1), ζ_data2 = $(ζ_data2))"
     end
 
     return eta4modes, eta4cell, multi_indices_extended, ζ_data1-ζ_data2 #, f4modes
