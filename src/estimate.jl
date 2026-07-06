@@ -89,6 +89,8 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
     nmodes_extended = length(multi_indices_extended)
     G = TB_extended.G
 
+    Mcoeff = maxm(C)
+
     ## prepare neighbours of modes
     mneighboursPLUS, mneighboursMINUS = get_neighbours(OBT, multi_indices_extended)
 
@@ -154,20 +156,20 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
             for qp in 1:nweights
                 eval_trafo!(x, L2G, xref[qp])
                 kmL2 = 0.0
-                for m in 1:M
+                for m in 1:Mcoeff
                     am[1] = 0
                     get_am!(am, x, m, C)
                     kmL2 += am[1]^2
                 end
                 rhs(ftemp, x)
                 ζ_data1 += ftemp[1]^2 * exp(2*kmL2) * weights[qp] * cellvolumes[cell]
-                for j in 1:nmodes
+                for j in 1:nmodes_extended
                     lambda_temp = 0.0
                     for d in 1:ndofs4cell_interp
                         dof = (j - 1) * offset_interp + celldofs_interp[d, cell]
                         lambda_temp += idvals[1, d, qp] * coeffs_interp[dof]
                     end
-                    ζ_data2 += lambda_temp^2 * weights[qp] * cellvolumes[cell]
+                    ζ_data2 += lambda_temp^2 * ftemp[1]^2 * weights[qp] * cellvolumes[cell]
                 end
             end
 
