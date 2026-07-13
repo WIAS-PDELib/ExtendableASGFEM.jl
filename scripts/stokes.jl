@@ -1,8 +1,10 @@
-#= 
+# Stochastisches Beispiel mit Null Randdaten
+# Qu & Xu Bsp. 1 nachcoden -> coefficients.jl dazu definieren, an inhomogene Randdaten denken -> Muss implementiert werden
+#=
 
 ([source code](SOURCE_URL))
 
-runs AFEM loop for stochastic Poisson problem
+runs AFEM loop for stochastic Stokes problem
 
 usage:
 - run experiment: run(; problem = problem, kwargs...)
@@ -10,26 +12,50 @@ usage:
 - produce plots : produce_plots(; kwargs...)
 
 possible values for problem are
-- PoissonProblemPrimal = Poisson problem with linear coefficient a
-- LogTransformedPoissonProblemPrimal = log-transformed Poisson problem with exponential coefficient exp(a)
-- LogTransformedPoissonProblemDual = dual formulation of the log-transformed Poisson problem
+- StokesProblemPrimal = Stokes problem with linear coefficient ν
 
 =#
 
-module Poisson
+module Stokes
 
+using CairoMakie
+using DataFrames
+using DelimitedFiles
+using DrWatson
 using ExtendableASGFEM
 using ExtendableFEM
 using ExtendableFEMBase
 using ExtendableGrids
-using DataFrames
-using DrWatson
-using UnicodePlots
-using LaTeXStrings
 using GridVisualize
-using CairoMakie
-using DelimitedFiles
+using LaTeXStrings
 using Pkg
+using Symbolics
+using UnicodePlots
+
+function prepare_data(C::AbstractStochasticCoefficient, sample_pointer)
+    @variables ν x y
+
+    ξ = x^2 * (x - 1)^2 * y^2 * (y - 1)^2
+    ∇ξ = Symbolics.gradient(ξ, [x, y])
+    u = [-∇ξ[2], ∇ξ[1]]
+    p = x^5 + y^5 - 1 / 3
+    ∇u = Symbolics.jacobian(u, [x, y])
+    Δu = [
+        Symbolics.derivative(∇u[1, 1], x) + Symbolics.derivative(∇u[1, 2], y),
+        Symbolics.derivative(∇u[2, 1], x) + Symbolics.derivative(∇u[2, 2], y),
+    ]
+    ∇p = Symbolics.gradient(p, [x, y])
+    f = -ν * Δu + ∇p
+    eval_f! = build_function(f, ν, x, y, expression = Val{false})[2]
+
+    get_ν! = get_a!(C)
+    ν = zeros(1)
+    return function (result, qpinfo)
+        get_ν!(ν, qpinfo.x, sample_pointer)
+        eval_f!(result, ν[1], qpinfo.x...)
+        return nothing
+    end
+end
 
 function filename(data; folder = "data", add = "", makepath = false)
     problem = data["problem"]
@@ -37,7 +63,6 @@ function filename(data; folder = "data", add = "", makepath = false)
     mean = data["mean"]
     order = data["order"]
     domain = data["domain"]
-    use_equilibration_estimator = data["use_equilibration_estimator"]
     θ_stochastic = data["θ_stochastic"]
     θ_spatial = data["θ_spatial"]
     tail_extension = data["tail_extension"]
@@ -47,23 +72,20 @@ function filename(data; folder = "data", add = "", makepath = false)
         mkpath(filename)
     end
     filename *= add * "order=$(order)_maxdofs=$(maxdofs)_decay=$(decay)_mean=$(mean)_θ=($(θ_spatial),$(θ_stochastic))_tail=$(tail_extension)"
-    if use_equilibration_estimator
-        filename *= "_eq"
-    end
     return filename
 end
 
 default_args = Dict(
     "initial_refs" => 1,
-    "domain" => "square", ## or lshape
+    "domain" => "square",
     "order" => 1,
-    "problem" => LogTransformedPoissonProblemPrimal,
+    "problem" => StokesProblemPrimal,
     "C" => StochasticCoefficientCosinus,
-    "decay" => 2,
-    "mean" => 0,
+    "decay" => 1000,
+    "mean" => 1.0,
     "maxm" => 150,
     "bonus_quadorder_a" => 2,
-    "f" => (result, qpinfo) -> (result[1] = 1),
+    "f" => nothing,
     "bonus_quadorder_f" => 0,
     "θ_stochastic" => 0.5,
     "θ_spatial" => 0.5,
@@ -72,13 +94,10 @@ default_args = Dict(
     "maxdofs" => 1.0e4,
     "initial_modes" => [[0]],
     "nsamples" => 150,
-    "use_equilibration_estimator" => false,
     "use_iterative_solver" => true,
     "Plotter" => nothing,
 )
 
-
-## that is the main function to run and save results
 function run(; force = false, kwargs...)
     data = deepcopy(default_args)
 
@@ -87,10 +106,8 @@ function run(; force = false, kwargs...)
     end
     Plotter = data["Plotter"]
 
-    ## load/produce data
     data, ~ = produce_or_load(_main, data, filename = filename, force = force)
 
-    ## plot final solution
     results = data["results"]
     sol = data["solution"]
     multi_indices = data["multi_indices"]
@@ -112,8 +129,6 @@ function run(; force = false, kwargs...)
     return data
 end
 
-
-# loads (or produces) a result file and prints the data
 function show_results(; force = false, mode_history_up_to_level = 15, kwargs...)
     data = deepcopy(default_args)
 
@@ -121,15 +136,13 @@ function show_results(; force = false, mode_history_up_to_level = 15, kwargs...)
         data[String(k)] = v
     end
 
-    data, ~ = produce_or_load(main, data, filename = filename, force = force)
+    data, ~ = produce_or_load(_main, data, filename = filename, force = force)
 
     results = data["results"]
     nmodes = results[!, "nmodes"]
     nlevels = length(nmodes)
 
-    ## multi_index statisticts
     MI = data["multi_indices"]
-    istart = 1
     for j in 1:min(mode_history_up_to_level, nlevels)
         istart = j == 1 ? 1 : nmodes[j - 1] + 1
         iend = nmodes[j]
@@ -145,20 +158,16 @@ function show_results(; force = false, mode_history_up_to_level = 15, kwargs...)
         end
     end
 
-
     return data
 end
 
-# the main AFEM loop for the given problem and data
-# (this function does not check for existing results, better use run !)
 function _main(
         data = nothing;
         debug = false,
         plot_solution = false,
-        Plotter = nothing,
+        Plotter = CairoMakie,
         kwargs...
     )
-
     if isnothing(data)
         data = deepcopy(default_args)
     end
@@ -167,37 +176,27 @@ function _main(
         data[String(k)] = v
     end
 
-    ## read arguments
     problem = data["problem"]
     nrefs = data["initial_refs"]
     decay = data["decay"]
     mean = data["mean"]
-    τ = 1
-    if problem <: PoissonProblemPrimal
-        @assert mean >= 1 "coefficient for $problem needs to be at least 1 to ensure ellipticity"
-        τ = 0.9
-    end
+    τ = 0.9
     maxm = data["maxm"]
     C = data["C"](; τ = τ, decay = decay, mean = mean, maxm = maxm)
     θ_stochastic = data["θ_stochastic"]
     θ_spatial = data["θ_spatial"]
     multi_indices = Array{Array{Int, 1}, 1}(data["initial_modes"])
     nsamples = data["nsamples"]
-    f! = data["f"]
     bonus_quadorder_a = data["bonus_quadorder_a"]
     bonus_quadorder_f = data["bonus_quadorder_f"]
     factor_tail = data["factor_tail"]
     maxdofs = data["maxdofs"]
     order = data["order"]
     use_iterative_solver = data["use_iterative_solver"]
-    use_equilibration_estimator = data["use_equilibration_estimator"]
 
     prepare_multi_indices!(multi_indices)
     @info "initial multi_indices = $(multi_indices)"
 
-    ############################
-    ## spatial discretisation ##
-    ############################
     dim = 2
     domain = data["domain"]
     if dim == 1
@@ -214,130 +213,78 @@ function _main(
         @error "dimension $dim not available yet"
     end
 
-
     df = DataFrame(
         ndofs_space = zeros(Int, 0),
         nmodes = zeros(Int, 0),
         exact_error_stress = zeros(Float64, 0),
         exact_error_u = zeros(Float64, 0),
+        exact_error_p = zeros(Float64, 0),
         exact_error_stress_uni = zeros(Float64, 0),
         exact_error_u_uni = zeros(Float64, 0),
+        exact_error_p_uni = zeros(Float64, 0),
         estimate = zeros(Float64, 0),
         estimate_active = zeros(Float64, 0),
         estimate_tail = zeros(Float64, 0),
-        estimate_tail_data = zeros(Float64, 0),
         time_solve = zeros(Float64, 0),
-        time_estimate = zeros(Float64, 0)
+        time_estimate = zeros(Float64, 0),
     )
 
     sol = nothing
     lvl = 0
-    while (true)
 
-        push!(df, [0 0 0 0 0 0 0 0 0 0 0 0])
+    while true
+        push!(df, [0 0 0 0 0 0 0 0 0 0 0 0 0])
 
-        ###############################
-        ## stochastic discretisation ##
-        ###############################
         lvl += 1
         @info "LEVEL $lvl"
         prepare_multi_indices!(multi_indices)
         M = maximum(length.(multi_indices))
-        OBType = problem <: PoissonProblemPrimal ? LegendrePolynomials : HermitePolynomials
+        OBType = LegendrePolynomials
         ansatz_deg = maximum([maximum(multi_indices[k]) for k in 1:length(multi_indices)]) + 4
         TensorBasis = TensorizedBasis(OBType, M, ansatz_deg, 2 * ansatz_deg, 2 * ansatz_deg, multi_indices = multi_indices)
         if debug
             @info C, TensorBasis
-            #plot_basis(TensorBasis; Plotter = Plotter)
         end
 
         if num_nodes(xgrid) < 200
             println(stdout, unicode_gridplot(xgrid))
         end
 
-        ############
-        ## solver ##
-        ############
-        ## generate solution object
-        if problem <: LogTransformedPoissonProblemDual
-            FEType = [HDIVRTk{2, order}, order == 0 ? L2P0{1} : H1Pk{1, dim, order}]
-            FES = [FESpace{FEType[1]}(xgrid), FESpace{FEType[2]}(xgrid; broken = true)]
-            unames = ["p", "u"]
-        elseif problem <: LogTransformedPoissonProblemPrimal || problem <: PoissonProblemPrimal
-            FEType = H1Pk{1, dim, order}
-            FES = FESpace{FEType}(xgrid)
-            unames = ["u"]
-        else
-            @error "problem type not available"
-        end
+        FETypes = (H1BR{2}, L2P0{1})
+        FES = [FESpace{FETypes[1]}(xgrid), FESpace{FETypes[2]}(xgrid)]
+        unames = ["u", "p"]
+
+        Samples, _ = sample_distribution(TensorBasis, 2; M = 2, Mweights = 2)
+        f! = isnothing(data["f"]) ? prepare_data(C, Samples) : data["f"]
+
         sol = SGFEVector(FES, TensorBasis; active_modes = 1:length(multi_indices), unames = unames)
 
-        ## call solve
-        time_solve = @elapsed bdofs = solve!(problem, sol, C; rhs = f!, bonus_quadorder_a = bonus_quadorder_a, bonus_quadorder_f = bonus_quadorder_f, use_iterative_solver = use_iterative_solver, debug = debug)
+        time_solve = @elapsed bdofs = solve!(problem, sol, C; (rhs!) = (f!), bonus_quadorder_a = bonus_quadorder_a, bonus_quadorder_f = bonus_quadorder_f, use_iterative_solver = use_iterative_solver)
         df[lvl, :time_solve] = time_solve
 
-        ############
-        ## report ##
-        ############
-        ## plot modes
-        if Plotter == nothing && plot_solution
+        if isnothing(Plotter) && plot_solution
             for j in 1:num_multiindices(sol)
                 if debug
                     @show extrema(view(sol[j]))
                 end
-                println(stdout, unicode_scalarplot(sol[j]; title = "MI $(multi_indices[j])"))
+                println(stdout, unicode_scalarplot(sol[1]; title = "MI $(multi_indices[1])"))
             end
         elseif plot_solution
-            plot_modes(sol; Plotter = Plotter, ncols = 4)
+            p = plot_modes(sol; Plotter = CairoMakie, ncols = 4)
+            display(p)
         end
 
-        ############
-        ## errors ##
-        ############
+        weightederrorH1, weightederrorL2u, weightederrorL2p, uniformerrorH1, uniformerrorL2u, uniformerrorL2p = calculate_sampling_error_2(
+            sol, C; problem, metrics_configurations = stokes_metrics_configuration, (rhs!) = (f!), order = order + 1, nsamples, debug
+        )
 
-        ## exact error by hierarchic sampling
-        weightederrorH1, weightederrorL2, uniformerrorH1, uniformerrorL2 = calculate_sampling_error(sol, C; problem = problem, rhs = f!, order = order + 1, debug = debug, bonus_quadorder_a = bonus_quadorder_a, bonus_quadorder_f = bonus_quadorder_f, nsamples = nsamples)
-
-        ## error estimator
         tail_extension = data["tail_extension"]
-        if use_equilibration_estimator
-            time_estimate = @elapsed η4modes, η4cells, multi_indices_extended, ζ_data = estimate_equilibration(problem, sol, C; rhs = f!, bonus_quadorder = max(bonus_quadorder_f, bonus_quadorder_a), tail_extension = tail_extension)
-        else
-            time_estimate = @elapsed η4modes, η4cells, multi_indices_extended, ζ_data = estimate(problem, sol, C; rhs = f!, bonus_quadorder = max(bonus_quadorder_f, bonus_quadorder_a), tail_extension = tail_extension)
-        end
-        for j in 1:length(multi_indices_extended)
-            @info "mode = $(multi_indices_extended[j]) | error = $(η4modes[j])" # \t| f4mode = $(j <= length(multi_indices) ? f4modes[j] : 0)"
+        time_estimate = @elapsed η4modes, η4cells, multi_indices_extended = estimate(problem, sol, C; rhs = f!, bonus_quadorder = max(bonus_quadorder_a, bonus_quadorder_f), tail_extension = tail_extension)
+        for (multi_index, error) in zip(multi_indices_extended, η4modes)
+            @info "mode = $(multi_index) | error = $(error)"
         end
         df[lvl, :time_estimate] = time_estimate
-        @info ζ_data
 
-        ## compute norms of solution modes and grad(am)
-        # nmodes = length(multi_indices)
-        # normsuh4mode = zeros(Float64, nmodes)
-        # M = FEMatrix(FES, FES)
-        # assemble!(M, BilinearOperator([id(1)]))
-        # for j = 1 : nmodes
-        #     normsuh4mode[j] = lrmatmul(view(sol[j]), M.entries, view(sol[j]))
-        # end
-        # @show normsuh4mode
-
-        # norms4gradam = zeros(Float64, maxm)
-        # for m = 1 : maxm
-        #     norms4gradam[m] = norm(integrate(xgrid, ON_CELLS, (result, qpinfo)->(get_gradam!(result, qpinfo.x, m, C); result.= result.^2;), 2))
-        # end
-        # @show norms4gradam
-
-        # ## alternative tail estimator
-        # for j = 1 : nmodes
-        #     normsuh4mode[j] = lrmatmul(view(sol[j]), M.entries, view(sol[j]))
-        #     tail_mode, tail_m = get_next_tail(multi_indices, multi_indices[j], 2, maxm)
-        #     tail_estimate = f4modes[j] + normsuh4mode[j] * norms4gradam[tail_m]
-        #     @show j, tail_mode, tail_m, tail_estimate
-        # end
-
-        #########################
-        ## ADAPTIVE REFINEMENT ##
-        #########################
         inactive_else, inactive_bnd, inactive_bnd2, active_bnd, active_int = classify_modes(multi_indices_extended, multi_indices_extended[1:TensorBasis.nmodes])
 
         sorted_id = sortperm(η4modes; rev = true)
@@ -366,24 +313,25 @@ function _main(
         end
         @show actives
 
-        ## save RESULTS
         @info "FINAL RESULTS
-        || ∇(u-u_h) || (w,u) = $(sqrt.(weightederrorH1)), $(sqrt.(uniformerrorH1))
+        || u - u_h || (w,u) = $(sqrt.(weightederrorL2u)), $(sqrt.(uniformerrorL2u))
+        || ∇(u - u_h) || (w,u) = $(sqrt.(weightederrorH1)), $(sqrt.(uniformerrorH1))
+        || p - p_h || (w,u) = $(sqrt.(weightederrorL2p)), $(sqrt.(uniformerrorL2p))
         estimator_total = $(sqrt(sum(η4modes .^ 2)))
         estimator_space = $(sqrt(EstimatorInterior))
-        estimator_stoch = $(sqrt(EstimatorBoundary))
-        || u - u_h || (w,u) = $(sqrt.(weightederrorL2)), $(sqrt.(uniformerrorL2))"
+        estimator_stoch = $(sqrt(EstimatorBoundary))"
 
         df[lvl, :ndofs_space] = sum([sol.FES_space[j].ndofs for j in 1:length(sol.FES_space)])
         df[lvl, :nmodes] = sol.TB.nmodes
         df[lvl, :exact_error_stress] = sqrt(weightederrorH1[end])
-        df[lvl, :exact_error_u] = sqrt(weightederrorL2[end])
+        df[lvl, :exact_error_u] = sqrt(weightederrorL2u[end])
+        df[lvl, :exact_error_p] = sqrt(weightederrorL2p[end])
         df[lvl, :exact_error_stress_uni] = sqrt(uniformerrorH1[end])
-        df[lvl, :exact_error_u_uni] = sqrt(uniformerrorL2[end])
+        df[lvl, :exact_error_u_uni] = sqrt(uniformerrorL2u[end])
+        df[lvl, :exact_error_p_uni] = sqrt(uniformerrorL2p[end])
         df[lvl, :estimate] = sqrt(sum(η4modes .^ 2))
         df[lvl, :estimate_active] = sqrt(EstimatorInterior)
         df[lvl, :estimate_tail] = sqrt(EstimatorBoundary)
-        df[lvl, :estimate_tail_data] = sqrt(ζ_data)
         data["results"] = df
         data["solution"] = sol
         data["multi_indices"] = multi_indices
@@ -392,20 +340,17 @@ function _main(
             break
         end
 
-        if EstimatorInterior > factor_tail * EstimatorBoundary + ζ_data
+        if EstimatorInterior > factor_tail * EstimatorBoundary
             println("...spatial refinement")
             if θ_spatial >= 1
-                ## uniform mesh refinement
                 xgrid = uniform_refine(xgrid)
             else
-                ## refine by red-green-blue refinement (incl. closuring)
                 facemarker = bulk_mark(xgrid, view(sum(view(η4cells, :, actives), dims = 2), :), θ_spatial; indicator_AT = ON_CELLS)
-                # facemarker = bulk_mark(xgrid, view(η4cells,:,1), θ_spatial; indicator_AT = ON_CELLS)
                 xgrid = RGB_refine(xgrid, facemarker)
             end
-        else # stochastic refinement
-            accumulated_stochastic_error = 0
+        else
             println("...stochastic refinement")
+            accumulated_stochastic_error = 0
             for j in 1:length(multi_indices_extended)
                 if (sorted_id[j] in inactive_bnd || sorted_id[j] in inactive_bnd2)
                     percentage = η4modes[sorted_id[j]]^2 / EstimatorBoundary
@@ -435,7 +380,6 @@ function _main(
     return data
 end
 
-
 function produce_plots(;
         order = default_args["order"],
         decay = default_args["decay"],
@@ -447,13 +391,12 @@ function produce_plots(;
         markersize = 10,
         plotM = 80,
         maxdegree = 12,
-        template = :convergence, # :custom = specify your own cols
-        cols = [:estimate, :exact_error_stress],
+        template = :convergence,
+        cols = nothing,
         xlabel = "ndofs",
         show_optimal_rate = false,
         kwargs...
     )
-
     colors = Makie.wong_colors()
     linestyles = [:solid, :dot, :dashdot, :dashdotdot]
 
@@ -463,20 +406,20 @@ function produce_plots(;
     end
 
     if template == :convergence
-        cols = [:estimate, :exact_error_stress]
+        cols = isnothing(cols) ? [:estimate, :exact_error_stress, :exact_error_p] : cols
     elseif template == :convergence_with_L2
-        cols = [:estimate, :exact_error_stress, :exact_error]
+        cols = isnothing(cols) ? [:estimate, :exact_error_stress, :exact_error, :exact_error_p] : cols
     elseif template == :active_vs_tail
-        cols = [:estimate_active, :estimate_tail, :estimate_tail_data]
+        cols = isnothing(cols) ? [:estimate_active, :estimate_tail] : cols
     elseif template == :dofs
-        cols = [:ndofs_space, :nmodes, :ndofs_all]
+        cols = isnothing(cols) ? [:ndofs_space, :nmodes, :ndofs_all] : cols
         xscale = nothing
         legend_position = :lt
         xlabel = "level"
+    else
+        @error "template = $template not implemented"
     end
 
-
-    ## load/produce data
     if typeof(order) <: Real
         order = [order]
     end
@@ -492,29 +435,25 @@ function produce_plots(;
         repair_grid!(xgrid)
         xgrid[BFaceRegions] .= 1
 
-        ## gridplot
         gplt = GridVisualize.gridplot(xgrid; Plotter = CairoMakie, linewidth = 1, colorbar = :none, legend = :none)
         filename_plot = filename(basedata; add = "grid_", folder = "plots", makepath = true) * ".png"
         CairoMakie.save(filename_plot, gplt)
         @info "grid plot for $cols saved under $filename_plot"
-
     end
 
-    ## load results
     for d in 1:length(decay)
-        ## convergence plot
         ylabel = ""
         if length(cols) == 1
             if cols[1] == :exact_error_u
                 ylabel = L"|| u - u_h ||_{L^2}"
             elseif cols[1] == :exact_error_stress
                 ylabel = L"|| u - u_h ||_A"
+            elseif col[1] == :exact_error_p
+                ylabel = L"|| p - p_h ||_{L^2}"
             elseif cols[1] == :estimate
                 ylabel = L"\eta"
             elseif cols[1] == :estimate_tail
                 ylabel = L"\eta_\text{tail}"
-            elseif cols[1] == :estimate_tail
-                ylabel = L"\zeta_\text{data}"
             elseif cols[1] == :estimate_active
                 ylabel = L"\eta_\text{active}"
             end
@@ -568,16 +507,13 @@ function produce_plots(;
                             plotdata .*= scaling_factor
                         end
                         label = L"\eta"
+                    elseif cols[c] == :exact_error_p
+                        label = L"|| p - p_h ||_{L^2}"
                     elseif cols[c] == :estimate_tail
                         if scaling_factor !== nothing
                             plotdata .*= scaling_factor
                         end
                         label = L"\eta(\partial_h \Lambda)"
-                    elseif cols[c] == :estimate_tail_data
-                        if scaling_factor !== nothing
-                            plotdata .*= scaling_factor
-                        end
-                        label = L"\zeta_\text{data}(\Lambda)"
                     elseif cols[c] == :estimate_active
                         if scaling_factor !== nothing
                             plotdata .*= scaling_factor
@@ -627,9 +563,6 @@ function produce_plots(;
 
         # Plot
         replace!(height, 0 => 0.1)
-        if maxdegree == 0
-            #  maxdegree = maximum(max4mode[:])
-        end
         yticks = (1:maxdegree, ["$(Int(j))" for j in 1:maxdegree])
         xticks = (1:plotM, [j % 2 == 1 ? "$(Int(j))" : "" for j in 1:plotM])
         f_bar = Figure(fontsize = 12, size = (900, 250))
@@ -653,8 +586,6 @@ function produce_plots(;
         CairoMakie.save(filename_plot, f_bar)
         @info "modes bar plot for $cols saved under $filename_plot"
     end
-
-
     return
 end
 
@@ -668,4 +599,4 @@ function repair_grid!(xgrid::ExtendableGrid)
     return xgrid.components[UniqueBFaceGeometries] = Vector{ElementGeometries}([xgrid.components[BFaceGeometries][1]])
 end
 
-end # module
+end
