@@ -5,14 +5,14 @@ using Distributions: Distributions, Normal, Uniform, dim, pdf
 using DocStringExtensions: DocStringExtensions, TYPEDEF, TYPEDSIGNATURES
 using ExtendableFEM: ExtendableFEM, BilinearOperator, FaceInterpolator,
     HomogeneousBoundaryData, ItemIntegrator, ItemIntegratorDG,
-    L2NormIntegrator, LinearOperator, ProblemDescription,
-    Unknown, assemble!, assign_operator!, assign_unknown!,
-    div, grad, id, jump, plot
+    L2NormIntegrator, LinearOperator, ProblemDescription, Reconstruct, Unknown,
+    ZeroMeanValueRestriction, apply, assemble!, assign_operator!, assign_restriction!,
+    assign_unknown!, div, grad, id, jump, plot, InterpolateBoundaryData
 using ExtendableFEMBase: ExtendableFEMBase, BFaceDofs, CellDofs, Divergence,
     FEEvaluator, FEMatrix, FESpace, FEVector,
-    FEVectorBlock, Gradient, H1P1, H1Pk, HDIVRTk,
-    Laplacian, QuadratureRule, _addnz, addblock!,
-    addblock_matmul!, eval_febe!, fill!, get_ndofs,
+    FEVectorBlock, Gradient, H1P1, H1Pk, H1P2B, L2P1, HDIVRT0, HDIVRT1, HDIVRTk,
+    H1BR, Identity, L2P0, Laplacian, QuadratureRule, _addnz, addblock!,
+    addblock_matmul!, eval_febe!, fill!, get_ndofs, ON_BFACES,
     get_polynomialorder, unicode_scalarplot,
     update_basis!
 using ExtendableGrids: ExtendableGrids, Adjacency, BFaceFaces, CellFaces,
@@ -25,7 +25,8 @@ using ExtendableGrids: ExtendableGrids, Adjacency, BFaceFaces, CellFaces,
     max_num_targets_per_source, num_cells, num_nodes,
     num_sources, num_targets, unique, update_trafo!
 using ExtendableSparse: ExtendableSparse, ExtendableSparseMatrix, flush!
-using GridVisualize: GridVisualize, GridVisualizer, scalarplot, scalarplot!
+using GridVisualize: GridVisualize, GridVisualizer, scalarplot, scalarplot!,
+    GridVisualize
 using IterativeSolvers: IterativeSolvers
 using Krylov: Krylov
 using LinearAlgebra: LinearAlgebra, SymTridiagonal, dot, eigvals, eigvecs,
@@ -70,6 +71,7 @@ export set_sample!
 include("coefficients/coefficients.jl")
 export AbstractStochasticCoefficient
 export StochasticCoefficientCosinus, SingleStochasticCoefficient
+export StochasticCoefficientConstants
 export get_am!, get_gradam!
 export get_a!, get_expa!
 export get_am_x, get_gradam_x_sigma, get_gradam_x_u
@@ -85,9 +87,12 @@ export deterministic_problem, deterministic_problem2
 export LogTransformedPoissonProblemPrimal
 export LogTransformedPoissonProblemDual
 export PoissonProblemPrimal
+export StokesProblemPrimal
 
 include("sampling_error.jl")
 export calculate_sampling_error
+export calculate_sampling_error_2
+export u_with_stress_metric_configuration, stokes_metrics_configuration
 
 include("estimate.jl")
 export estimate

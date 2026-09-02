@@ -39,7 +39,7 @@ function deterministic_problem(::Type{LogTransformedPoissonProblemDual}, C::Abst
     end
 
     PD = ProblemDescription("log-transformed Poisson problem (dual)")
-    p = Unknown("p"; name = "stress p = -∇ũ - ∇aũ = - epx(-a) ∇u")
+    p = Unknown("p"; name = "stress p = -∇ũ - ∇aũ = - exp(-a) ∇u")
     u = Unknown("u"; name = "potential ũ = exp(-a) u")
     assign_unknown!(PD, p)
     assign_unknown!(PD, u)

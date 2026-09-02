@@ -89,6 +89,7 @@ An `ONBasis` object containing:
 function ONBasis(OBT::Type{<:OrthogonalPolynomialType}, maxorder, maxquadorder = 2 * maxorder; T = Float64)
     ## find quadrature rule and evaluate basis at all quadrature points
     gr = gauss_rule(OBT, maxquadorder; T = T)
+    gr[2] .*= ExtendableASGFEM.norms(OBT, 0)^2
     val = zeros(T, maxorder + 1)
     vals4xref = evaluate(OBT, maxorder, gr[1])
 

@@ -14,7 +14,7 @@ of ``a``).
 """
 abstract type AbstractStochasticCoefficient{T} end
 include("cosinus.jl")
-
+include("constant_coefficients.jl")
 
 """
 $(TYPEDSIGNATURES)
