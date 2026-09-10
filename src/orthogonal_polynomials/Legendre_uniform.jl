@@ -10,7 +10,7 @@ $(TYPEDSIGNATURES)
 
 Returns the recurrence coefficients `(a, b, c)` for the k-th Legendre polynomial, corresponding to the three-term recurrence relation:
 
-    P_{k}(x) = (a_k x - b_k) P_{k-1}(x) - c_k P_{k-2}(x)
+    P_{k+1}(x) = (a_k + b_k * x) P_k(x) - c_k P_{k-1}(x)
 
 For Legendre polynomials:
 - `a = 0`
@@ -20,7 +20,7 @@ For Legendre polynomials:
 - `P_0 = 1`
 """
 recurrence_coefficients(::Type{LegendrePolynomials}, k::Integer) =
-    0, (2 * k + 1) // (k + 1), k // (k + 1)
+    0, (2 * k + 1) / (k + 1), k / (k + 1)
 
 issymmetric(::Type{LegendrePolynomials}) = true
 
@@ -29,9 +29,9 @@ $(TYPEDSIGNATURES)
 
 Returns the norm of the k-th Legendre polynomial, i.e.,
 
-    ||P_k|| = sqrt(2 / (2k + 1)) / sqrt(2)
+    ||P_k|| = sqrt(1 / (2k + 1))
 """
-norms(::Type{LegendrePolynomials}, k) = sqrt(2 / (2 * k + 1)) / sqrt(2)
+norm_basis(::Type{LegendrePolynomials}, k) = sqrt(1 / (2 * k + 1))
 
 """
 $(TYPEDSIGNATURES)

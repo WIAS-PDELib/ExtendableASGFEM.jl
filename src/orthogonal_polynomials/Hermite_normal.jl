@@ -10,9 +10,9 @@ $(TYPEDSIGNATURES)
 
 Returns the recurrence coefficients `(a, b, c)` for the k-th Hermite polynomial, corresponding to the three-term recurrence relation:
 
-    H_{k}(x) = (a_k x - b_k) H_{k-1}(x) - c_k H_{k-2}(x)
+    H_{k+1}(x) = (a_k + b_k * x) H_k(x) - c_k H_{k-1}(x)
 
-For Hermite polynomials:
+For Hermite polynomials (probabilist's/normalized form):
 - `a = 0`
 - `b = 1`
 - `c = k`
@@ -20,7 +20,7 @@ For Hermite polynomials:
 - `H_0 = 1`
 """
 recurrence_coefficients(::Type{HermitePolynomials}, k::Integer) =
-    0, 1, k
+    0.0, 1.0, convert(Float64, k)
 
 issymmetric(::Type{HermitePolynomials}) = true
 
@@ -31,7 +31,7 @@ Returns the norm of the k-th Hermite polynomial, i.e.,
 
     ||H_k|| = sqrt(k!)
 """
-norms(::Type{HermitePolynomials}, k) = sqrt.(factorial.(big(k)))
+norm_basis(::Type{HermitePolynomials}, k) = sqrt.(factorial.(big(k)))
 
 """
 $(TYPEDSIGNATURES)

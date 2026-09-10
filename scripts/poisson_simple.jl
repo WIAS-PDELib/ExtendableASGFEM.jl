@@ -14,6 +14,8 @@ using ExtendableFEM
 using ExtendableFEMBase
 using ExtendableGrids
 using GridVisualize
+using UnicodePlots
+using Term
 
 function main(;
         problem = PoissonProblemPrimal,
@@ -25,7 +27,7 @@ function main(;
         initial_modes = [[0], [1, 0], [0, 1], [2, 0], [0, 0, 1]],   # initial multi-indices for stochastic basis
         f! = (result, qpinfo) -> (result[1] = 1),       # right-hand side function
         use_iterative_solver = true,    # use iterative solver ? (otherwise direct)
-        Plotter = nothing
+        Plotter = UnicodePlots
     )
 
     ## prepare stochastic coefficient

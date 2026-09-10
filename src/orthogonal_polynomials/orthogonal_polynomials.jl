@@ -5,21 +5,10 @@ abstract type OrthogonalPolynomialType end
 include("Hermite_normal.jl")
 include("Legendre_uniform.jl")
 
-eltypes(::Type{Tuple{T1}}) where {T1} = (T1,)
-eltypes(::Type{Tuple{T1, T2}}) where {T1, T2} = (T1, T2)
-eltypes(::Type{Tuple{T1, T2, T3}}) where {T1, T2, T3} = (T1, T2, T3)
-eltypes(::Type{Tuple{T1, T2, T3, T4}}) where {T1, T2, T3, T4} = (T1, T2, T3, T4)
-
-function flip_tuple_array(a::Array{T}) where {T}
-    types = eltypes(T)
-    N = length(a)
-    b = [zeros(t, N) for t in types]
-    for i in 1:length(types)
-        for j in 1:N
-            b[i][j] = a[j][i]
-        end
-    end
-    return (b)
+function flip_tuple_array(arr::Vector{<:Tuple})
+    N = length(arr)
+    n = length(arr[1])
+    return ntuple(i -> [arr[k][i] for k in 1:N], Val(n))
 end
 
 
@@ -110,7 +99,8 @@ $(TYPEDSIGNATURES)
 Evaluates the first n+1 orthogonal polynomials at a vector of x
 """
 function evaluate(basis::Type{<:OrthogonalPolynomialType}, n::Integer, x::AbstractVector{T}) where {T}
-    y = ones(T, length(x), n + 1)
+    y = zeros(T, length(x), n + 1)
+    y[:, 1] .= 1
     for k in 0:(n - 1)
         a, b, c = recurrence_coefficients(basis, k)
         for j in 1:length(x)
@@ -210,10 +200,10 @@ Changes the recurrence coefficients, such that basis functions are normalized.
 """
 function normalise_recurrence_coefficients(OBT::Type{<:OrthogonalPolynomialType}, k)
     (a, b, c) = recurrence_coefficients(OBT, k)
-    h2 = norms(OBT, k + 1)
-    h1 = norms(OBT, k)
+    h2 = norm_basis(OBT, k + 1)
+    h1 = norm_basis(OBT, k)
     if k > 0
-        h0 = norms(OBT, k - 1)
+        h0 = norm_basis(OBT, k - 1)
     else
         h0 = 0
     end

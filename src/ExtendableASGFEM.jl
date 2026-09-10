@@ -25,7 +25,7 @@ using ExtendableGrids: ExtendableGrids, Adjacency, BFaceFaces, CellFaces,
     max_num_targets_per_source, num_cells, num_nodes,
     num_sources, num_targets, unique, update_trafo!
 using ExtendableSparse: ExtendableSparse, ExtendableSparseMatrix, flush!
-using GridVisualize: GridVisualize, GridVisualizer, scalarplot, scalarplot!
+using GridVisualize: GridVisualize, GridVisualizer, scalarplot, scalarplot!, reveal
 using IterativeSolvers: IterativeSolvers
 using Krylov: Krylov
 using LinearAlgebra: LinearAlgebra, SymTridiagonal, dot, eigvals, eigvecs,
@@ -44,7 +44,7 @@ include("orthogonal_polynomials/orthogonal_polynomials.jl")
 export OrthogonalPolynomialType
 export HermitePolynomials, LegendrePolynomials #, LaguerrePolynomials, ChebyshevTPolynomials, ChebyshevUPolynomials
 export evaluate, evaluate!, gauss_rule
-export norm, norms
+export norm, norm_basis
 export distribution
 export normalise_recurrence_coefficients
 
