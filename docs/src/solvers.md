@@ -15,10 +15,20 @@ Pages = ["sgfevector.jl"]
 Order   = [:type, :function]
 ```
 
-## Solve Function
+## Solve Dispatchers
 
 ```@autodocs
 Modules = [ExtendableASGFEM]
 Pages = ["modelproblems/modelproblems.jl"]
+Order   = [:type, :function]
+```
+
+## Poisson Primal Solvers
+
+The primal stochastic Poisson problem can be solved both iteratively (matrix-free) and directly (full assembly). See [Iterative Solution of the Primal Poisson Problem](solvers_poisson_primal.md) for a detailed explanation of the iterative algorithm.
+
+```@autodocs
+Modules = [ExtendableASGFEM]
+Pages = ["modelproblems/solvers_poisson_primal.jl"]
 Order   = [:type, :function]
 ```

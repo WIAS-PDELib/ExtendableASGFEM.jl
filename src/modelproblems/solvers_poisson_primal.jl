@@ -11,6 +11,23 @@
 #ldiv!(y, ::Identity, x) = copyto!(y, x)
 
 
+"""
+    MySystemPrimal{Tv, MT, VT, GT}
+
+Matrix-free block system evaluator for the primal stochastic Poisson problem.
+
+Represents the block-structured linear operator arising from the stochastic Galerkin
+discretisation with a Karhunen-Loeve expanded diffusion coefficient. The operator acts
+on vectors partitioned by stochastic mode and implements `mul!` for matrix-vector
+products without assembling the full block matrix.
+
+# Fields
+- `A0::MT`: Mean diffusion block.
+- `Am::Vector{MT}`: KL perturbation blocks (one per random dimension).
+- `G::GT`: Coupling tensor with entries `G[e, mu, nu]` mapping KL indices `e` to mode pairs.
+- `bdofs::Vector{Int}`: Boundary dofs for homogeneous Dirichlet conditions.
+- `nmodes::Int`: Number of stochastic modes.
+"""
 struct MySystemPrimal{Tv, MT, VT, GT}
     A0::MT
     Am::Vector{MT}
@@ -20,6 +37,22 @@ struct MySystemPrimal{Tv, MT, VT, GT}
 end
 Base.size(S::MySystemPrimal) = S.nmodes .* size(S.A0.entries)
 
+"""
+    MyPreconditionerPrimal{Tv, FAC}
+
+Block-diagonal LU preconditioner for the primal SG Poisson system.
+
+Each diagonal block is the inverse of the mean stiffness matrix ``A_0``, obtained via
+LU factorisation. Boundary dofs are handled by stiffening those diagonal entries in the
+pre-factored ``A_0`` so that forward/backward substitution implicitly enforces zero
+Dirichlet conditions.
+
+# Fields
+- `LUA::FAC`: LU factorisation of ``A_0`` with stiffened boundary dofs.
+- `DA::Vector{Tv}`: Diagonal of ``A_0`` (kept for compatibility, not used in current path).
+- `bdofs::Vector{Int}`: Boundary dofs.
+- `nmodes::Int`: Number of stochastic modes.
+"""
 struct MyPreconditionerPrimal{Tv, FAC}
     LUA::FAC
     DA::Array{Tv, 1}
@@ -27,6 +60,15 @@ struct MyPreconditionerPrimal{Tv, FAC}
     nmodes::Int
 end
 
+"""
+    MyPreconditionerPrimal(A::ExtendableSparseMatrix, bdofs, nmodes)
+
+Construct a block-diagonal LU preconditioner from the mean matrix ``A_0``.
+
+Stiffens boundary diagonal entries to ``1e60`` and precomputes the LU factorisation of
+the modified matrix. The factorisation is reused for every preconditioner-vector
+product in the GMRES iteration.
+"""
 function MyPreconditionerPrimal(A::ExtendableSparseMatrix{Tv, Ti}, bdofs, nmodes) where {Tv, Ti}
     DA::Array{Tv, 1} = zeros(Tv, size(A, 1))
     for j in 1:length(DA)
@@ -83,6 +125,17 @@ end
 end
 
 
+"""
+    LinearAlgebra.mul!(Ax, S::MySystemPrimal, x)
+
+Matrix-free matmul for the block-structured SG Poisson operator.
+
+Computes the product ``Ax`` in-place without assembling the full block matrix. For each
+stochastic mode ``\\mu``, the deterministic diffusion ``A_0`` is applied to mode ``\\mu``
+of ``x``, and every KL perturbation ``A_e`` is applied to mode ``\\nu`` of ``x`` weighted
+by the coupling coefficient ``G_{e,\\mu,\\nu}``. Boundary rows are zeroed out after
+accumulation.
+"""
 function LinearAlgebra.mul!(Ax, S::MySystemPrimal{Tv, MT, VT, GT}, x) where {Tv, MT, VT, GT}
     fill!(Ax, 0)
     g::Tv = 0
@@ -127,6 +180,32 @@ Base.eltype(S::MySystemPrimal) = typeof(S).parameters[1]
 Base.size(S::MySystemPrimal, d::Int) = S.nmodes * size(S.A.entries, 1)
 
 
+"""
+    solve_primal!(SolutionSGFEM::SGFEVector, A0, Am, b0, G, nmodes, bfac; atol, rtol)
+
+Solve the primal SG Poisson system iteratively using matrix-free preconditioned GMRES.
+
+Builds a `MySystemPrimal` operator and a `MyPreconditionerPrimal` from
+the mean matrix ``A_0``, KL perturbation blocks ``A_m``, coupling tensor ``G``, and
+boundary info extracted from the ``SGFEVector``. The right-hand side is assembled by
+copying the solution vector, adding the deterministic force block ``b_0`` to mode 1,
+and zeroing boundary entries on all modes.
+
+Krylov.jl's ``Krylov.gmres`` is used as the solver. Default tolerances are 1e-14.
+
+# Arguments
+- `SolutionSGFEM`: Output ``SGFEVector`` (modified in-place).
+- `A0`: Mean stiffness block.
+- `Am`: Vector of KL-perturbation stiffness blocks.
+- `b0`: Deterministic right-hand side block (applied to mode 1 only).
+- `G`: Coupling tensor ``G[e, mu, nu]``.
+- `nmodes`: Number of stochastic modes.
+- `bfac`: Not used.
+
+# Keywords
+- `atol`: Absolute GMRES tolerance (default 1.0e-14).
+- `rtol`: Relative GMRES tolerance (default 1.0e-14).
+"""
 function solve_primal!(SolutionSGFEM::SGFEVector, A0, Am, b0, G, nmodes, bfac; atol = 1.0e-14, rtol = 1.0e-14)
 
     ## create fullmatrix-free matrix evaluator
@@ -169,6 +248,29 @@ function solve_primal!(SolutionSGFEM::SGFEVector, A0, Am, b0, G, nmodes, bfac; a
 end
 
 
+"""
+    solve_full_primal!(SolutionSGFEM::SGFEVector, A0, A, b, G, nmodes, rhsfac)
+
+Build the full block SG Poisson matrix and solve it with a direct backslash.
+
+Assembles the complete block system into a ``FEMatrix`` with ``nmodes * nmodes`` blocks:
+the diagonal receives contributions from the mean operator ``A_0``, and off-diagonal
+and diagonal blocks are filled by the KL perturbations ``A_e`` weighted by the coupling
+tensor ``G``. Boundary dofs are stiffened and RHS entries set to zero. The system is
+solved in a single line via Julia's ``\\`` operator.
+
+This function is primarily useful for verification against the matrix-free solver
+``solve_primal!`` since it scales as ``O((nmodes * ndofs)^3)``.
+
+# Arguments
+- `SolutionSGFEM`: Output ``SGFEVector`` (modified in-place).
+- `A0`: Mean stiffness block.
+- `A`: Vector of KL-perturbation blocks.
+- `b`: Right-hand side blocks.
+- `G`: Coupling tensor.
+- `nmodes`: Number of stochastic modes.
+- `rhsfac`: Not used.
+"""
 function solve_full_primal!(SolutionSGFEM::SGFEVector, A0, A, b, G, nmodes, rhsfac)
 
     M::Int = length(A) # size(G,1) / nmodes
