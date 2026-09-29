@@ -345,7 +345,7 @@ function apply_error_integrators_from_metrics!(
             set_sample!(SolutionSGFEM, y)
             for metric in metrics
                 sol = ExtendableFEM.evaluate(metric["integrator"](y), metric["solution"])
-                error_per_run[metric["name"]][m + 1, s] = sum(view(sol, 1, :)) # Hier Abweichung: Keine Abhängigkeit von energy_norm!
+                error_per_run[metric["name"]][m + 1, s] = sqrt(sum(view(sol, 1, :))) # Hier Abweichung: Keine Abhängigkeit von energy_norm!
             end
         end
 

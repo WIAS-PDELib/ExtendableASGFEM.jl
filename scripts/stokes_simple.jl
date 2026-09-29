@@ -1,6 +1,8 @@
 module StokesSimple
 
 using CairoMakie
+using DataFrames
+using DelimitedFiles
 using ExtendableASGFEM
 using ExtendableFEM
 using ExtendableFEMBase
@@ -73,7 +75,7 @@ function prepare_data_for_example_with_analytical_solution(rc::RunConfiguration;
                 exact_func_for_fixed_stochastic_input! = exact_func!(sample_pointer)
                 return function (result, input, qpinfo)
                     exact_func_for_fixed_stochastic_input!(result, qpinfo)
-                    result[1] = sqrt(sum((result - input) .^ 2))
+                    result[1] = sum((result - input) .^ 2)
                     return nothing
                 end
             end
@@ -150,7 +152,7 @@ function create_plot(
         linestyles = [:dot, :dashdot, :dashdotdot]
         for i in 1:3
             scatterlines!(
-                xdata, xdata .^ (-i), label = L"\mathcal{O}(h^{%$(-i)})", color = :gray,
+                xdata, xdata .^ (-i / 2), label = L"\mathcal{O}(h^{%$(-i)})", color = :gray,
                 markersize = 0, linewidth = 2, linestyle = linestyles[i],
             )
         end
@@ -274,11 +276,17 @@ function runner_error_for_taylor_hood_element(rc::RunConfiguration; kwargs...)
     ]
     metrics = setup_metrics(StokesProblemPrimal, metrics_configuration)
 
+    df = DataFrame(
+        ndofs = zeros(Int, 0),
+        ∇u_error = zeros(Float64, 0),
+        u_error = zeros(Float64, 0),
+        p_error = zeros(Float64, 0),
+    )
+
     FETypes, unames = (H1P2{2, 2}, H1P1{1}), ["u", "p"]
 
     SolutionSGFEM = nothing
-    ndofs, error = Vector{Float64}(undef, 0), Vector{Vector{Float64}}(undef, 0)
-    for nrefs in 1:5
+    for nrefs in 1:6
         xgrid, _ = prepare_domain(rc, nrefs)
         FES = [FESpace{FETypes[1]}(xgrid), FESpace{FETypes[2]}(xgrid)]
 
@@ -294,19 +302,14 @@ function runner_error_for_taylor_hood_element(rc::RunConfiguration; kwargs...)
         u_error, ∇u_error, p_error = apply_error_integrators_from_metrics!(
             SolutionSGFEM, nothing, metrics, Samples, weights, M, Msamples; dimensionwise_error = false
         )
-        push!(ndofs, (FES[1].ndofs + FES[2].ndofs) * length(multi_indices))
-        push!(error, [u_error[end]; ∇u_error[end]; p_error[end]])
+
+        push!(
+            df, [(FES[1].ndofs + FES[2].ndofs) * length(multi_indices) ∇u_error[end] u_error[end] p_error[end]]
+        )
     end
 
-    if haskey(kwargs, :plot_path)
-        create_plot(
-            ndofs, error; xscale = log10, yscale = log10,
-            xlabel = L"\text{number of degrees of freedom}", ylabel = L"error measured in $L^2$-norm",
-            title = L"""Error for $-\nabla\cdot(\nu\nabla\mathbf{u}) + \nabla p = \mathbf{0}$
-            with Taylor-Hood pair $\mathcal{P}_2/\mathcal{P}_1$""",
-            labels = [L"\|u - u_h\|_{L^2}", L"\|∇(u - u_h)\|_{L^2}", L"\|p - p_h\|_{L^2}"],
-            plot_path = kwargs[:plot_path], position = :lt,
-        )
+    if haskey(kwargs, :table_path)
+        writedlm(kwargs[:table_path], Dict("result" => df))
     end
 
     return SolutionSGFEM
@@ -356,7 +359,7 @@ function runner_non_pressure_robustness_error(rc::RunConfiguration; kwargs...)
             SolutionSGFEM, nothing, metrics, Samples, weights, 1, Msamples; dimensionwise_error = false
         )
 
-        push!(error, [u_error[end]; ∇u_error[end]; p_error[end]])
+        push!(error, [∇u_error[end]; u_error[end]; p_error[end]])
     end
 
     if haskey(kwargs, :plot_path)
@@ -365,7 +368,7 @@ function runner_non_pressure_robustness_error(rc::RunConfiguration; kwargs...)
             ylabel = L"error measured in $L^2$-norm", plot_path = kwargs[:plot_path],
             title = L"""Error for $-\nabla\cdot((\alpha \cdot \nu)\nabla\mathbf{u}) + \nabla p = \mathbf{x}$,
             with Taylor-Hood pair $\mathcal{P}_2/\mathcal{P}_1$""",
-            labels = [L"\|u - u_h\|_{L^2}", L"\|∇(u - u_h)\|_{L^2}", L"\|p - p_h\|_{L^2}"],
+            labels = [L"\|∇(u - u_h)\|_{L^2}", L"\|u - u_h\|_{L^2}", L"\|p - p_h\|_{L^2}"],
         )
     end
 
@@ -377,7 +380,7 @@ function runner_convergence_plot(rc::RunConfiguration; kwargs...)
     ν = α * get(kwargs, :ν, [1.0, 0.2])
     reconstruct = get(kwargs, :reconstruct, false)
     FETypes = get(kwargs, :FETypes, (H1P2{2, 2}, H1P1{1}))
-    nrefs_max = get(kwargs, :nrefs_max, 4)
+    nrefs_max = get(kwargs, :nrefs_max, 5)
 
     SCType = rc.stochastic_configuration.SCType
     C = SCType(ν)
@@ -403,7 +406,7 @@ function runner_convergence_plot(rc::RunConfiguration; kwargs...)
         )
 
         l2stress_error, l2u_error, l2p_error = calculate_sampling_error_2(
-            SolutionSGFEM, exact_f!, C; problem = StokesProblemPrimal, nsamples = 100, order = 2,
+            SolutionSGFEM, exact_f!, C; problem = StokesProblemPrimal, nsamples = 5, order = 2,
             metrics_configuration = stokes_metrics_configuration, dimensionwise_error = true,
         )
 
@@ -417,7 +420,7 @@ function runner_convergence_plot(rc::RunConfiguration; kwargs...)
             ylabel = L"error measured in $L^2$-norm", plot_path = kwargs[:plot_path], position = :rt,
             title = reconstruct ? L"\text{Convergence plot for the complex example with reconstruction operator}"
                 : L"\text{Convergence plot for the complex example without reconstruction operator}",
-            labels = [L"\|u - u_h\|_{L^2}", L"\|∇(u - u_h)\|_{L^2}", L"\|p - p_h\|_{L^2}"], show_optimal_rate = true,
+            labels = [L"\|∇(u - u_h)\|_{L^2}", L"\|u - u_h\|_{L^2}", L"\|p - p_h\|_{L^2}"], show_optimal_rate = true,
         )
     end
 
@@ -447,7 +450,7 @@ run_configuration_error_for_taylor_hood_element = RunConfiguration(
     stochastic_configuration_constant_coefficients,
     [[0], [1]],
     runner_error_for_taylor_hood_element,
-    [Dict(:plot_path => "plots/taylor_hood_error_for_simple_example.svg")],
+    [Dict(:table_path => "data/taylor_hood_error_for_simple_example.txt")],
 )
 
 run_configuration_non_pressure_robust_example = RunConfiguration(
@@ -466,8 +469,8 @@ run_configuration_show_modes_complex_example = RunConfiguration(
     [[0], [1], [2], [3]],
     runner_plot_modes_for_solution,
     [
-        Dict(:α => 10.0^(-6), :FETypes => (H1BR{2}, L2P0{1}), :nrefs => 4, :reconstruct => false),
-        Dict(:α => 10.0^(-6), :FETypes => (H1BR{2}, L2P0{1}), :nrefs => 4, :reconstruct => true),
+        Dict(:α => 10.0^(-6), :FETypes => (H1BR{2}, L2P0{1}), :nrefs => 3, :reconstruct => false),
+        Dict(:α => 10.0^(-6), :FETypes => (H1BR{2}, L2P0{1}), :nrefs => 3, :reconstruct => true),
     ]
 )
 

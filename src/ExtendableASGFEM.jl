@@ -7,7 +7,7 @@ using ExtendableFEM: ExtendableFEM, BilinearOperator, FaceInterpolator,
     HomogeneousBoundaryData, ItemIntegrator, ItemIntegratorDG,
     L2NormIntegrator, LinearOperator, ProblemDescription, Reconstruct, Unknown,
     ZeroMeanValueRestriction, apply, assemble!, assign_operator!, assign_restriction!,
-    assign_unknown!, div, grad, id, jump, plot, InterpolateBoundaryData
+    assign_unknown!, div, grad, id, jump, plot, InterpolateBoundaryData, Δ
 using ExtendableFEMBase: ExtendableFEMBase, BFaceDofs, CellDofs, Divergence,
     FEEvaluator, FEMatrix, FESpace, FEVector,
     FEVectorBlock, Gradient, H1P1, H1P2, H1Pk, H1P2B, L2P1, HDIVRT0, HDIVRT1, HDIVRTk,

@@ -30,30 +30,41 @@ using Pkg
 using Symbolics
 using UnicodePlots
 
-function prepare_data(C::AbstractStochasticCoefficient, sample_pointer)
-    @variables x1 x2
+function prepare_data_for_complex_example(; ν = 1.0, kwargs...)
+    @variables x1, x2
 
-    ξ = x1^2 * (x1 - 1)^2 * x2^2 * (x2 - 1)^2
-    ∇ξ = Symbolics.gradient(ξ, [x1, x2])
-    u = [-∇ξ[2], ∇ξ[1]]
-    p = x1^5 + x2^5 - 1 / 3
-    ∇u = Symbolics.jacobian(u, [x1, x2])
+    ψ = x1^2 * (x1 - 1)^2 * x2^2 * (x2 - 1)^2
+    ∇ψ = Symbolics.gradient(ψ, [x1, x2])
+    curl_ψ = [-∇ψ[2], ∇ψ[1]]
+    ∇u = Symbolics.jacobian(curl_ψ, [x1, x2])
     Δu = [
         Symbolics.derivative(∇u[1, 1], x1) + Symbolics.derivative(∇u[1, 2], x2),
         Symbolics.derivative(∇u[2, 1], x1) + Symbolics.derivative(∇u[2, 2], x2),
     ]
+    p = x1^3
     ∇p = Symbolics.gradient(p, [x1, x2])
-    ν = 1
-    f = -ν * Δu + ∇p
+    f = - ν * Δu + ∇p
     curl_f = Symbolics.derivative(f[2], x1) - Symbolics.derivative(f[1], x2)
 
-    function map_expression_to_eval_func(expr)
-        compiled = build_function(expr, x1, x2, expression = Val{false})
-        eval_func! = isa(compiled, Tuple) ? compiled[2] : (result, values...) -> (result[1] = compiled(values...))
-        return (result, qpinfo) -> eval_func!(result, qpinfo.x...)
-    end
+    eval_f! = build_function(f, x1, x2, expression = Val{false})[2]
+    eval_f_curl = build_function(curl_f, x1, x2, expression = Val{false})
+    eval_u! = build_function(0 * [x1, x2], x1, x2, expression = Val{false})[2]
 
-    return map(map_expression_to_eval_func, [f, curl_f])
+    return (result, x) -> eval_f!(result, x...), (result, x) -> (result[1] = eval_f_curl(x...)), (result, x) -> eval_u!(result, x...)
+end
+
+function prepare_data_for_simple_example(; kwargs...)
+    @variables x1, x2
+
+    u = [0, (1 / 2) * (1 - x1^2)]
+    f = 0 * [x1, x2]
+    curl_f = Symbolics.derivative(f[2], x1) - Symbolics.derivative(f[1], x2)
+
+    eval_f! = build_function(f, x1, x2, expression = Val{false})[2]
+    eval_f_curl = build_function(curl_f, x1, x2, expression = Val{false})
+    eval_u! = build_function(u, x1, x2, expression = Val{false})[2]
+
+    return (result, x) -> eval_f!(result, x...), (result, x) -> (result[1] = eval_f_curl(x...)), (result, x) -> eval_u!(result, x...)
 end
 
 function filename(data; folder = "data", add = "", makepath = false)
@@ -79,8 +90,8 @@ default_args = Dict(
     "domain" => "square",
     "order" => 1,
     "problem" => StokesProblemPrimal,
-    "C" => StochasticCoefficientCosinus,
-    "decay" => 1000,
+    "C" => StochasticCoefficientConstants,
+    "decay" => 2,
     "mean" => 1.0,
     "maxm" => 150,
     "bonus_quadorder_a" => 2,
@@ -90,10 +101,11 @@ default_args = Dict(
     "θ_spatial" => 0.5,
     "factor_tail" => 1,
     "tail_extension" => [10, 2], # for [0] mode, and all others
-    "maxdofs" => 1.0e4,
+    "maxdofs" => 3232,
     "initial_modes" => [[0]],
-    "nsamples" => 150,
+    "nsamples" => 10,
     "use_iterative_solver" => true,
+    "reconstruct" => true,
     "Plotter" => nothing,
 )
 
@@ -128,7 +140,7 @@ function run(; force = false, kwargs...)
     return data
 end
 
-function show_results(; force = false, mode_history_up_to_level = 15, kwargs...)
+function show_results(; force = false, mode_history_up_to_level = 500, kwargs...)
     data = deepcopy(default_args)
 
     for (k, v) in kwargs
@@ -146,7 +158,7 @@ function show_results(; force = false, mode_history_up_to_level = 15, kwargs...)
         istart = j == 1 ? 1 : nmodes[j - 1] + 1
         iend = nmodes[j]
         if iend >= istart
-            @info "NEW MODES on level $j : "
+            @info "NEW MODES on level $j: "
             maxlength = maximum([findlast(!=(0), MI[k]) for k in istart:iend])
             if maxlength === nothing
                 maxlength = 1
@@ -181,7 +193,7 @@ function _main(
     mean = data["mean"]
     τ = 0.9
     maxm = data["maxm"]
-    C = data["C"](; τ = τ, decay = decay, mean = mean, maxm = maxm)
+    C = data["C"]() #(; τ = τ, decay = decay, mean = mean, maxm = maxm)
     θ_stochastic = data["θ_stochastic"]
     θ_spatial = data["θ_spatial"]
     multi_indices = Array{Array{Int, 1}, 1}(data["initial_modes"])
@@ -192,6 +204,11 @@ function _main(
     maxdofs = data["maxdofs"]
     order = data["order"]
     use_iterative_solver = data["use_iterative_solver"]
+    reconstruct = data["reconstruct"]
+
+    if !reconstruct
+        throw("Error estimator for 'reconstruct=false' is unimplemented")
+    end
 
     prepare_multi_indices!(multi_indices)
     @info "initial multi_indices = $(multi_indices)"
@@ -253,11 +270,15 @@ function _main(
         FES = [FESpace{FETypes[1]}(xgrid), FESpace{FETypes[2]}(xgrid)]
         unames = ["u", "p"]
 
-        Samples, _ = sample_distribution(TensorBasis, 2; M = 2, Mweights = 2)
-        f! = isnothing(data["f"]) ? prepare_data(C, Samples)[1] : data["f"]
+        # Samples, _ = sample_distribution(TensorBasis, 2; M = 2, Mweights = 2)
+        #f!, f_curl!, boundary_data! = prepare_data_for_simple_example()
+        f!, f_curl!, boundary_data! = isnothing(data["f"]) ? prepare_data_for_complex_example(; ν = mean) : data["f"]
 
         sol = SGFEVector(FES, TensorBasis; active_modes = 1:length(multi_indices), unames = unames)
-        time_solve = @elapsed bdofs = solve!(problem, sol, f!, C; bonus_quadorder_a = bonus_quadorder_a, bonus_quadorder_f = bonus_quadorder_f, use_iterative_solver = use_iterative_solver)
+        time_solve = @elapsed bdofs = solve!(
+            problem, sol, (result, qpinfo) -> (f!(result, qpinfo.x)), C;
+            (exact_boundary!) = (result, qpinfo) -> (boundary_data!(result, qpinfo.x)), bonus_quadorder_a = bonus_quadorder_a, bonus_quadorder_f = bonus_quadorder_f, use_iterative_solver = use_iterative_solver, reconstruct = reconstruct
+        )
         df[lvl, :time_solve] = time_solve
 
         if isnothing(Plotter) && plot_solution
@@ -273,11 +294,14 @@ function _main(
         end
 
         weightederrorH1, weightederrorL2u, weightederrorL2p, uniformerrorH1, uniformerrorL2u, uniformerrorL2p = calculate_sampling_error_2(
-            sol, f!, C; problem, metrics_configuration = stokes_metrics_configuration, order = order + 1, nsamples
+            sol, (result, qpinfo) -> (f!(result, qpinfo.x)), C; problem, (exact_boundary!) = (result, qpinfo) -> (boundary_data!(result, qpinfo.x)), metrics_configuration = stokes_metrics_configuration, order = order + 1, nsamples, Msamples = 20, reconstruct = reconstruct
         )
 
         tail_extension = data["tail_extension"]
-        time_estimate = @elapsed η4modes, η4cells, multi_indices_extended = estimate(problem, sol, C; rhs = f!, bonus_quadorder = max(bonus_quadorder_a, bonus_quadorder_f), tail_extension = tail_extension)
+        time_estimate = @elapsed η4modes, η4cells, multi_indices_extended = estimate(
+            problem, sol, C; rhs = f!, rhs_curl = f_curl!,
+            bonus_quadorder = max(bonus_quadorder_a, bonus_quadorder_f), tail_extension = tail_extension
+        )
         for (multi_index, error) in zip(multi_indices_extended, η4modes)
             @info "mode = $(multi_index) | error = $(error)"
         end

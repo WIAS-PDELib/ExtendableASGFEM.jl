@@ -528,6 +528,8 @@ function estimate(::Type{PoissonProblemPrimal}, sol::SGFEVector, C::AbstractStoc
             end
         end
         sol_jumps.entries .= sigmavalues
+        # @error "Mode:", multi_indices_extended[j]
+        # @error "Normal:", extrema(sol_jumps.entries)
         jumps4face .= sum(ExtendableFEM.evaluate(JumpIntegrator, sol_jumps), dims = 1)
         jumps4face[1, bfaces] .= 0
 
@@ -551,35 +553,221 @@ function estimate(::Type{PoissonProblemPrimal}, sol::SGFEVector, C::AbstractStoc
     return eta4modes, eta4cell, multi_indices_extended, 0.0
 end
 
-# TODO: Implement StokesProblemPrimal a posteriori estimator
-# This is a dummy estimator which enforces repeated spatial refinement
-level = 0
-function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStochasticCoefficient; rhs = nothing, bonus_quadorder = 1, tail_extension = 5)
+function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStochasticCoefficient; rhs = nothing, rhs_curl = nothing, bonus_quadorder = 1, tail_extension = 5)
+    if isnothing(rhs)
+        error("estimate: a right-hand side `rhs` is needed for the residual computation")
+    end
+    if isnothing(rhs_curl)
+        error("estimate: the curl `rhs_curl` of the `rhs` is needed for the residual computation")
+    end
+
     FES = sol.FES_space[1]
+    FEType = eltype(FES)
     xgrid = FES.xgrid
     ncells = num_cells(xgrid)
+    EG = xgrid[UniqueCellGeometries][1]
     TB = sol.TB
     nmodes = TB.nmodes
-    multi_indices = TB.multi_indices
 
-    multi_indices_extended = add_boundary_modes(deepcopy(multi_indices); tail_extension = tail_extension)
+    order = 1 # ToDo: Insert get_polynomialorder(FEType, EG) again
 
-    nmodes_extended = length(multi_indices_extended)
+    ## extend multi_indices, rebuild tensor basis and prepare mode neighbours
+    multi_indices_extended, TB_extended, G, mneighboursPLUS, mneighboursMINUS, M_extended, nmodes_extended = prepare_extended_modes(sol; tail_extension = tail_extension)
 
-    inactive_else, inactive_bnd, inactive_bnd2, active_bnd, active_int = classify_modes(multi_indices_extended, multi_indices_extended[1:nmodes])
+    ## coefficient modes beyond the coefficient's own expansion are identically zero
+    Mcoup = min(maxm(C), M_extended)
 
-    eta4modes = ones(Float64, nmodes_extended)
-    eta4cell = ones(Float64, ncells, nmodes_extended)
+    ## prepare quadrature rule
+    quadorder = 2 * (order - 1) + bonus_quadorder
+    qf = QuadratureRule{Float64, EG}(quadorder)
+    weights::Vector{Float64} = qf.w
+    xref::Vector{Vector{Float64}} = qf.xref
+    nweights::Int = length(weights)
+    cellvolumes = xgrid[CellVolumes]
 
-    actives = union(active_int, active_bnd)
-    for j in 1:length(nmodes_extended)
-        if j in actives
-            eta4modes[j] = ((level % 2) == 0) ? 10000 : 0
+    ## prepare FE basis evaluator and dofmap
+    FEBasis_Δ = FEEvaluator(FES, Laplacian, qf)
+    Δvals = FEBasis_Δ.cvals
+    L2G = L2GTransformer(EG, xgrid, ON_CELLS)
+    celldofs = FES[CellDofs]
+    ndofs4cell::Int = get_ndofs(ON_CELLS, FEType, EG)
+    ndofs = FES.ndofs
+    coeffs = sol.entries
+
+    ## precompute the mode-wise coupling structure of div(a grad u_h): for each mode j,
+    ## the list of (coefficient index m, solution mode k, triple-product weight g) such
+    ## that the mode-j residual reads f_nu + sum_m a_m * sum_(m,k,g) g * Laplace(u_k)
+    neighbours4mode = [Tuple{Int, Int, Float64}[] for j in 1:nmodes_extended]
+    for j in 1:nmodes_extended
+        if j <= nmodes
+            push!(neighbours4mode[j], (0, j, 1.0))
+        end
+        for m in 1:Mcoup
+            for k in (mneighboursPLUS[m, j], mneighboursMINUS[m, j])
+                if 0 < k <= nmodes
+                    g = G[(m - 1) * nmodes_extended + j, k]
+                    if g != 0
+                        push!(neighbours4mode[j], (m, k, g))
+                    end
+                end
+            end
         end
     end
-    global level += 1
 
-    return eta4modes, eta4cell, multi_indices_extended
+    # ToDo:
+    #     η_curl(σ_μ)   = ||h_T^2 curl(f_μ + div σ_μ)||_{L^2(D)}
+    #     η_jump(σ_μ)   = ||sqrt(h_E) [σ_μn_E]||_{L^2(E^∘)}
+    #     η_jump,2(σ_μ) = ||h_E^(3/2) [(f_μ + div σ_μ) ⋅ τ_E]||_{L^2(E^∘)}
+    #     η_cons,1(σ_μ) = ||div σ_μ ∘ (1 - Π)||_{V'_{h, 0}}
+
+    ## compute volume terms
+    eta4cell = zeros(Float64, ncells, nmodes_extended)
+    eta4modes = zeros(Float64, nmodes_extended)
+    ## local wrapper function: keeps the hot loop in a type-stable local scope
+    function barrier(EG, L2G::L2GTransformer)
+        amtmp = zeros(Float64, 1)
+        amvals = zeros(Float64, Mcoup + 1)
+        ftemp = zeros(Float64, 2)
+        x = zeros(Float64, 2)
+        lap4mode = zeros(Float64, nmodes, nweights)
+
+        # update_basis!(FEBasis_NormalFlux, cell)
+        # update_basis!(FEBasis_TangentFlux, cell)
+
+        for cell in 1:ncells
+            if order > 1
+                update_basis!(FEBasis_Δ, cell)
+            end
+            update_trafo!(L2G, cell)
+            if order > 1
+                error("The a posteriori error estimator for the StokesProblemPrimal is only implemented for FE pairs of order = 1")
+            else
+                #     η_cons,1(σ_μ) = ||div σ_μ ∘ (1 - Π)||_{V'_{h, 0}} <- result .= qpinfo.volume .* sum(Δu .^ 2)
+                #                   = ||Δu||
+                #     Volume term -> Implement in this loop
+
+                for qp in 1:nweights
+                    #     η_curl(σ_μ)   = ||h_T^2 curl(f_μ + div σ_μ)||_{L^2(D)}
+                    eval_trafo!(x, L2G, xref[qp])
+                    ## If velocity space is order 1: ||h_T^2 curl(f_μ + div σ_μ)|| = ||h_T^2 curl f_μ||
+                    rhs_curl(ftemp, x)
+                    eta4cell[cell, 1] += ftemp[1]^2 * weights[qp]
+                    ## Approximation for η_jump,2
+                end
+            end
+
+            ## mesh-size scaling (h_T ~ sqrt(|T|) in 2D): the reference quadrature weights only
+            ## provide the cell mean of the squared residual, and interior modes gain two
+            ## additional powers of h_T from Galerkin orthogonality;
+            ## boundary modes enjoy no Galerkin orthogonality and therefore have no additional h power
+            for j in 1:nmodes_extended
+                if j <= nmodes
+                    eta4cell[cell, j] *= cellvolumes[cell]^3
+                else
+                    eta4cell[cell, j] *= cellvolumes[cell]
+                end
+            end
+        end
+        for j in 1:nmodes_extended
+            eta4modes[j] = sqrt(sum(view(eta4cell, :, j)))
+        end
+        return
+    end
+
+    barrier(EG, L2G)
+
+    ## compute normal jumps of a grad u_h.
+    ## Linearity trick: instead of assembling the flux sum_m a_m * sum_k g*u_k of each mode j
+    ## (one FaceInterpolator sweep per mode and coefficient), evaluate a_m * jump(grad u_k)
+    ## at the face quadrature points only for the distinct (m, k) pairs that actually occur
+    ## in the coupling lists neighbours4mode = (m, k, g), and form the mode-j flux values as
+    ## linear combination of these stored pair values (the (0, j, 1.0) entries cover a_0*grad u_j)
+
+    ## New compute tangential jumps of grad u_h?
+
+    sol_j = FEVector(FES)
+    cellfaces = xgrid[CellFaces]
+    jumps4face = zeros(Float64, 1, size(xgrid[FaceNodes], 2))
+    jumps4face_laplace = zeros(Float64, 1, size(xgrid[FaceNodes], 2))
+
+    m_pointer = [0]
+
+    #     η_jump(σ_μ)   = ||sqrt(h_E) [σ_μn_E]||_{L^2(E^∘)}
+    #     η_jump,2(σ_μ) = ||h_E^(3/2) [(f_μ + div σ_μ) ⋅ τ_E]||_{L^2(E^∘)}
+    JumpEvaluator = FaceInterpolator(
+        (result, input, qpinfo) -> (get_am!(result, qpinfo.x, m_pointer[1], C); result .= result[1] .* [input[1] input[2]; input[3] input[4]] * qpinfo.normal), [jump(grad(1))];
+        resultdim = 2, # quadorder = 0
+    )
+    ExtendableFEM.build_assembler!(JumpEvaluator, [sol_j[1]])
+    sol_jumps = deepcopy(JumpEvaluator.value)
+
+    LaplaceJumpEvaluator = FaceInterpolator(
+        (result, input, qpinfo) -> (
+            get_am!(result, qpinfo.x, m_pointer[1], C);
+            result .= result[1] * input
+        ), [jump(Δ(1))] #quadorder = 0
+    )
+    ExtendableFEM.build_assembler!(LaplaceJumpEvaluator, [sol_j[1]])
+    sol_laplace_jumps = deepcopy(LaplaceJumpEvaluator.value)
+
+    JumpIntegrator = L2NormIntegrator([id(1)]; entities = ON_FACES)
+    bfaces = xgrid[BFaceFaces]
+
+    TangentJumpIntegrator = ItemIntegrator(
+        (result, input, qpinfo) -> (result[1] = (input[1] * qpinfo.normal[2] - input[2] * qpinfo.normal[1])^2), [id(1)];
+        entities = ON_FACES, resultdim = 1, quadorder = 0
+    )
+
+    @time for j in 1:nmodes_extended
+        fill!(sol_jumps[1], 0)
+        fill!(sol_laplace_jumps[1], 0)
+        for m in 0:M_extended
+            fill!(sol_j[1], 0)
+            if m == 0 && j <= nmodes
+                sol_j.entries .+= view(sol[j])
+            elseif m > 0
+                if mneighboursPLUS[m, j] > 0 && mneighboursPLUS[m, j] <= nmodes
+                    sol_j.entries .+= view(sol[mneighboursPLUS[m, j]]) * G[(m - 1) * nmodes_extended + j, mneighboursPLUS[m, j]]
+                end
+                if mneighboursMINUS[m, j] > 0 && mneighboursMINUS[m, j] <= nmodes
+                    sol_j.entries .+= view(sol[mneighboursMINUS[m, j]]) * G[(m - 1) * nmodes_extended + j, mneighboursMINUS[m, j]]
+                end
+            end
+            m_pointer[1] = m
+            ExtendableFEM.evaluate!(JumpEvaluator, sol_j)
+            sol_jumps.entries .+= JumpEvaluator.value.entries
+            ExtendableFEM.evaluate!(LaplaceJumpEvaluator, sol_j)
+            sol_laplace_jumps.entries .+= LaplaceJumpEvaluator.value.entries
+        end
+        @error "Mode:", multi_indices_extended[j]
+        @error "Normal:", extrema(sol_jumps.entries)
+        @error "Laplacian:", extrema(sol_laplace_jumps.entries)
+
+        jumps4face .= sum(ExtendableFEM.evaluate(JumpIntegrator, sol_jumps), dims = 1)
+        jumps4face[1, bfaces] .= 0
+
+        jumps4face_laplace .= sum(ExtendableFEM.evaluate(TangentJumpIntegrator, sol_laplace_jumps), dims = 1)
+        jumps4face_laplace[1, bfaces] .= 0
+
+        if j <= nmodes
+            jumps4face[1, :] .*= xgrid[FaceVolumes]
+            jumps4face_laplace[1, :] .*= xgrid[FaceVolumes] .^ 3
+        else
+            jumps4face[1, :] ./= xgrid[FaceVolumes]
+            jumps4face_laplace[1, :] .*= xgrid[FaceVolumes]
+        end
+
+        for cell in 1:ncells
+            for f in 1:3
+                eta4cell[cell, j] += jumps4face[cellfaces[f, cell]]
+                eta4cell[cell, j] += jumps4face_laplace[cellfaces[f, cell]]
+            end
+        end
+        eta4modes[j] = sqrt(eta4modes[j]^2 + sum(view(jumps4face, :)) + sum(view(jumps4face_laplace, :)))
+    end
+
+    ## no data truncation estimate for this problem (4th slot keeps the return signature uniform)
+    return eta4modes, eta4cell, multi_indices_extended, 0.0
 end
 
 

@@ -175,10 +175,10 @@ function solve_stokes_primal!(
     # enforce uniqueness of the pressure solution
     xgrid = SolutionSGFEM[1].FES.xgrid
     for i in 1:nmodes
-        pintegrate = ItemIntegrator([id(1)])
-        pmean = sum(ExtendableFEM.evaluate(pintegrate, [SolutionSGFEM.FEVectorBlocks[nmodes + i]])) /
+        pIntegrator = ItemIntegrator([id(1)])
+        pMean = sum(ExtendableFEM.evaluate(pIntegrator, [SolutionSGFEM.FEVectorBlocks[nmodes + i]])) /
             sum(xgrid[CellVolumes])
-        view(SolutionSGFEM.FEVectorBlocks[nmodes + i]) .-= pmean
+        view(SolutionSGFEM.FEVectorBlocks[nmodes + i]) .-= pMean
     end
 
     ## check residual
@@ -249,10 +249,10 @@ function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, A, B, b0, G, n
     ## enforce uniqueness of the pressure solution
     xgrid = SolutionSGFEM[1].FES.xgrid
     for i in 1:nmodes
-        p_integrator = ItemIntegrator([id(1)])
-        pmean = sum(ExtendableFEM.evaluate(p_integrator, [SolutionSGFEM.FEVectorBlocks[nmodes + i]])) /
+        pIntegrator = ItemIntegrator([id(1)])
+        pMean = sum(ExtendableFEM.evaluate(pIntegrator, [SolutionSGFEM.FEVectorBlocks[nmodes + i]])) /
             sum(xgrid[CellVolumes])
-        view(SolutionSGFEM.FEVectorBlocks[nmodes + i]) .-= pmean
+        view(SolutionSGFEM.FEVectorBlocks[nmodes + i]) .-= pMean
     end
 
     ## calculate residual

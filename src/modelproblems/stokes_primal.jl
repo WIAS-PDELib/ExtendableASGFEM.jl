@@ -116,6 +116,7 @@ function solve!(
     for bface in 1:nbfaces
         append!(bdofs, view(bfacedofs, :, bface))
     end
+    push!(bdofs, FES[1].ndofs + 1)
     unique!(bdofs)
 
     ## set appropriate boundary on the right-hand side
