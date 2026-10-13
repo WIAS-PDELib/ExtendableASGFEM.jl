@@ -553,7 +553,8 @@ function estimate(::Type{PoissonProblemPrimal}, sol::SGFEVector, C::AbstractStoc
     return eta4modes, eta4cell, multi_indices_extended, 0.0
 end
 
-function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStochasticCoefficient; rhs = nothing, rhs_curl = nothing, bonus_quadorder = 1, tail_extension = 5)
+function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStochasticCoefficient; rhs = nothing, rhs_curl = nothing, bonus_quadorder = 1, tail_extension = 5, reconstruct = true)
+    # ToDo: reconstruct übergeben
     if isnothing(rhs)
         error("estimate: a right-hand side `rhs` is needed for the residual computation")
     end
@@ -570,6 +571,9 @@ function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStoch
     nmodes = TB.nmodes
 
     order = 1 # ToDo: Insert get_polynomialorder(FEType, EG) again
+    if order > 1
+        error("The a posteriori error estimator for the StokesProblemPrimal is only implemented for FE pairs of order = 1")
+    end
 
     ## extend multi_indices, rebuild tensor basis and prepare mode neighbours
     multi_indices_extended, TB_extended, G, mneighboursPLUS, mneighboursMINUS, M_extended, nmodes_extended = prepare_extended_modes(sol; tail_extension = tail_extension)
@@ -614,14 +618,19 @@ function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStoch
         end
     end
 
-    # ToDo:
     #     η_curl(σ_μ)   = ||h_T^2 curl(f_μ + div σ_μ)||_{L^2(D)}
     #     η_jump(σ_μ)   = ||sqrt(h_E) [σ_μn_E]||_{L^2(E^∘)}
     #     η_jump,2(σ_μ) = ||h_E^(3/2) [(f_μ + div σ_μ) ⋅ τ_E]||_{L^2(E^∘)}
     #     η_cons,1(σ_μ) = ||div σ_μ ∘ (1 - Π)||_{V'_{h, 0}}
 
+    η_cons0_integrator = L2NormIntegrator(
+        [div(1)]; quadorder = 2
+    )
+    # TODO: Implement η_cons0 for stochastic(!) Stokes
+
     ## compute volume terms
     eta4cell = zeros(Float64, ncells, nmodes_extended)
+    eta4cell_2 = zeros(Float64, ncells, nmodes_extended)
     eta4modes = zeros(Float64, nmodes_extended)
     ## local wrapper function: keeps the hot loop in a type-stable local scope
     function barrier(EG, L2G::L2GTransformer)
@@ -629,30 +638,71 @@ function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStoch
         amvals = zeros(Float64, Mcoup + 1)
         ftemp = zeros(Float64, 2)
         x = zeros(Float64, 2)
-        lap4mode = zeros(Float64, nmodes, nweights)
+        lap = zeros(Float64, 2)
+        res = zeros(Float64, 2)
 
-        # update_basis!(FEBasis_NormalFlux, cell)
-        # update_basis!(FEBasis_TangentFlux, cell)
+        lap4mode = zeros(Float64, 2, nmodes, nweights)
 
         for cell in 1:ncells
-            if order > 1
-                update_basis!(FEBasis_Δ, cell)
-            end
             update_trafo!(L2G, cell)
-            if order > 1
-                error("The a posteriori error estimator for the StokesProblemPrimal is only implemented for FE pairs of order = 1")
-            else
-                #     η_cons,1(σ_μ) = ||div σ_μ ∘ (1 - Π)||_{V'_{h, 0}} <- result .= qpinfo.volume .* sum(Δu .^ 2)
-                #                   = ||Δu||
-                #     Volume term -> Implement in this loop
-
-                for qp in 1:nweights
+            for qp in 1:nweights
+                if reconstruct
                     #     η_curl(σ_μ)   = ||h_T^2 curl(f_μ + div σ_μ)||_{L^2(D)}
-                    eval_trafo!(x, L2G, xref[qp])
                     ## If velocity space is order 1: ||h_T^2 curl(f_μ + div σ_μ)|| = ||h_T^2 curl f_μ||
+                    eval_trafo!(x, L2G, xref[qp])
                     rhs_curl(ftemp, x)
                     eta4cell[cell, 1] += ftemp[1]^2 * weights[qp]
-                    ## Approximation for η_jump,2
+                else
+                    # ToDo: Implement error term for non-pressure-robust case
+                end
+
+                """
+                for j in 1:nmodes_extended
+                    for d in 1:ndofs4cell
+                        dof = celldofs[d, cell] # (j - 1) * ndofs + celldofs[d, cell]
+                        eta4cell[cell, 1] += coeffs[dof] * Δvals[1, d, qp]
+                    end
+                end
+                """
+
+                # η_cons,1(σ_μ) calculation
+                for k in 1:nmodes
+                    koff = (k - 1) * ndofs
+                    for qp in 1:nweights
+                        fill!(lap, 0)
+                        for d in 1:ndofs4cell
+                            lap[1] += coeffs[koff + celldofs[d, cell]] * Δvals[1, d, qp]
+                            lap[2] += coeffs[koff + celldofs[d, cell]] * Δvals[2, d, qp]
+                        end
+                        lap4mode[:, k, qp] .= lap
+                    end
+                end
+
+                for qp in 1:nweights
+                    eval_trafo!(x, L2G, xref[qp])
+                    if !reconstruct
+                        rhs(ftemp, x)
+                    else
+                        fill!(ftemp, 0)
+                    end
+
+                    ## evaluate all coefficient functions a_m(x) once per quadrature point
+                    for m in 0:Mcoup
+                        get_am!(amtmp, x, m, C)
+                        amvals[m + 1] = amtmp[1]
+                    end
+
+                    for j in 1:nmodes_extended
+                        if j == 1
+                            res .= ftemp
+                        else
+                            fill!(res, 0)
+                        end
+                        for (m, k, g) in neighbours4mode[j]
+                            res .+= amvals[m + 1] * g * view(lap4mode, :, k, qp)
+                        end
+                        eta4cell_2[cell, j] += (res[1]^2 + res[2]^2) * weights[qp]
+                    end
                 end
             end
 
@@ -663,13 +713,15 @@ function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStoch
             for j in 1:nmodes_extended
                 if j <= nmodes
                     eta4cell[cell, j] *= cellvolumes[cell]^3
+                    eta4cell_2[cell, j] *= cellvolumes[cell]^2
                 else
-                    eta4cell[cell, j] *= cellvolumes[cell]
+                    eta4cell[cell, j] *= cellvolumes[cell]^2
+                    eta4cell_2[cell, j] *= cellvolumes[cell]
                 end
             end
         end
         for j in 1:nmodes_extended
-            eta4modes[j] = sqrt(sum(view(eta4cell, :, j)))
+            eta4modes[j] = sqrt(sum(view(eta4cell, :, j)) + sum(view(eta4cell_2, :, j)))
         end
         return
     end
@@ -739,9 +791,6 @@ function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStoch
             ExtendableFEM.evaluate!(LaplaceJumpEvaluator, sol_j)
             sol_laplace_jumps.entries .+= LaplaceJumpEvaluator.value.entries
         end
-        @error "Mode:", multi_indices_extended[j]
-        @error "Normal:", extrema(sol_jumps.entries)
-        @error "Laplacian:", extrema(sol_laplace_jumps.entries)
 
         jumps4face .= sum(ExtendableFEM.evaluate(JumpIntegrator, sol_jumps), dims = 1)
         jumps4face[1, bfaces] .= 0
@@ -763,6 +812,7 @@ function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStoch
                 eta4cell[cell, j] += jumps4face_laplace[cellfaces[f, cell]]
             end
         end
+
         eta4modes[j] = sqrt(eta4modes[j]^2 + sum(view(jumps4face, :)) + sum(view(jumps4face_laplace, :)))
     end
 

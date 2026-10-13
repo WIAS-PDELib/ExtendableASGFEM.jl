@@ -90,7 +90,7 @@ default_args = Dict(
     "domain" => "square",
     "order" => 1,
     "problem" => StokesProblemPrimal,
-    "C" => StochasticCoefficientConstants,
+    "C" => StochasticCoefficientCosinus,
     "decay" => 2,
     "mean" => 1.0,
     "maxm" => 150,
@@ -193,7 +193,7 @@ function _main(
     mean = data["mean"]
     τ = 0.9
     maxm = data["maxm"]
-    C = data["C"]() #(; τ = τ, decay = decay, mean = mean, maxm = maxm)
+    C = data["C"](; τ = τ, decay = decay, mean = mean, maxm = maxm)
     θ_stochastic = data["θ_stochastic"]
     θ_spatial = data["θ_spatial"]
     multi_indices = Array{Array{Int, 1}, 1}(data["initial_modes"])
@@ -336,21 +336,21 @@ function _main(
         @show actives
 
         @info "FINAL RESULTS
-        || u - u_h || (w,u) = $(sqrt.(weightederrorL2u)), $(sqrt.(uniformerrorL2u))
-        || ∇(u - u_h) || (w,u) = $(sqrt.(weightederrorH1)), $(sqrt.(uniformerrorH1))
-        || p - p_h || (w,u) = $(sqrt.(weightederrorL2p)), $(sqrt.(uniformerrorL2p))
+        || u - u_h || (w,u) = $(weightederrorL2u), $(uniformerrorL2u)
+        || ∇(u - u_h) || (w,u) = $(weightederrorH1), $(uniformerrorH1)
+        || p - p_h || (w,u) = $(weightederrorL2p), $(uniformerrorL2p)
         estimator_total = $(sqrt(sum(η4modes .^ 2)))
         estimator_space = $(sqrt(EstimatorInterior))
         estimator_stoch = $(sqrt(EstimatorBoundary))"
 
         df[lvl, :ndofs_space] = sum([sol.FES_space[j].ndofs for j in 1:length(sol.FES_space)])
         df[lvl, :nmodes] = sol.TB.nmodes
-        df[lvl, :exact_error_stress] = sqrt(weightederrorH1[end])
-        df[lvl, :exact_error_u] = sqrt(weightederrorL2u[end])
-        df[lvl, :exact_error_p] = sqrt(weightederrorL2p[end])
-        df[lvl, :exact_error_stress_uni] = sqrt(uniformerrorH1[end])
-        df[lvl, :exact_error_u_uni] = sqrt(uniformerrorL2u[end])
-        df[lvl, :exact_error_p_uni] = sqrt(uniformerrorL2p[end])
+        df[lvl, :exact_error_stress] = weightederrorH1[end]
+        df[lvl, :exact_error_u] = weightederrorL2u[end]
+        df[lvl, :exact_error_p] = weightederrorL2p[end]
+        df[lvl, :exact_error_stress_uni] = uniformerrorH1[end]
+        df[lvl, :exact_error_u_uni] = uniformerrorL2u[end]
+        df[lvl, :exact_error_p_uni] = uniformerrorL2p[end]
         df[lvl, :estimate] = sqrt(sum(η4modes .^ 2))
         df[lvl, :estimate_active] = sqrt(EstimatorInterior)
         df[lvl, :estimate_tail] = sqrt(EstimatorBoundary)
@@ -430,7 +430,7 @@ function produce_plots(;
     if template == :convergence
         cols = isnothing(cols) ? [:estimate, :exact_error_stress, :exact_error_p] : cols
     elseif template == :convergence_with_L2
-        cols = isnothing(cols) ? [:estimate, :exact_error_stress, :exact_error, :exact_error_p] : cols
+        cols = isnothing(cols) ? [:estimate, :exact_error_stress, :exact_error_u, :exact_error_p] : cols
     elseif template == :active_vs_tail
         cols = isnothing(cols) ? [:estimate_active, :estimate_tail] : cols
     elseif template == :dofs
@@ -458,7 +458,7 @@ function produce_plots(;
         xgrid[BFaceRegions] .= 1
 
         gplt = GridVisualize.gridplot(xgrid; Plotter = CairoMakie, linewidth = 1, colorbar = :none, legend = :none)
-        filename_plot = filename(basedata; add = "grid_", folder = "plots", makepath = true) * ".png"
+        filename_plot = filename(basedata; add = "grid_", folder = "plots", makepath = true) * ".png" # ToDo: Svg
         CairoMakie.save(filename_plot, gplt)
         @info "grid plot for $cols saved under $filename_plot"
     end
@@ -561,7 +561,8 @@ function produce_plots(;
 
         basedata["order"] = order
         basedata["decay"] = decay[d]
-        filename_plot = filename(basedata; add = "$(template)_", folder = "plots", makepath = true) * ".png"
+        filename_plot = filename(basedata; add = "$(template)_", folder = "plots", makepath = true) * ".png" # ToDo: Svg
+
         CairoMakie.save(filename_plot, f_conv)
         @info "convergence plot for $cols saved under $filename_plot"
     end
@@ -593,7 +594,7 @@ function produce_plots(;
             cat, height,
             dodge = AbstractVector{Integer}(groups),
             color = colors[groups]
-        )
+        ) # ToDo: Narrower plot?
 
         # Legend
         labels = ["decay $d" for d in decay]
@@ -604,7 +605,8 @@ function produce_plots(;
 
         basedata["decay"] = decay
         basedata["order"] = order[o]
-        filename_plot = filename(basedata; add = "barplot_", folder = "plots", makepath = true) * ".png"
+        filename_plot = filename(basedata; add = "barplot_", folder = "plots", makepath = true) * ".png" # ToDo: Svg
+
         CairoMakie.save(filename_plot, f_bar)
         @info "modes bar plot for $cols saved under $filename_plot"
     end

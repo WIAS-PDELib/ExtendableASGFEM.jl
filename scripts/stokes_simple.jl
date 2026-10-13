@@ -435,8 +435,17 @@ stochastic_configuration_constant_coefficients = StochasticConfiguration(
     LegendrePolynomials, StochasticCoefficientConstants,
 )
 
-run_configuration_show_modes = RunConfiguration(
+run_configuration_show_modes_simple_example = RunConfiguration(
     generate_data_for_simple_example,
+    domain_configuration_large_square,
+    stochastic_configuration_constant_coefficients,
+    [[0], [1]],
+    runner_plot_modes_for_solution,
+    [],
+)
+
+run_configuration_show_modes_simple_example_with_modified_rhs = RunConfiguration(
+    generate_data_for_simple_example_with_modified_rhs,
     domain_configuration_large_square,
     stochastic_configuration_constant_coefficients,
     [[0], [1]],
@@ -469,8 +478,8 @@ run_configuration_show_modes_complex_example = RunConfiguration(
     [[0], [1], [2], [3]],
     runner_plot_modes_for_solution,
     [
-        Dict(:α => 10.0^(-6), :FETypes => (H1BR{2}, L2P0{1}), :nrefs => 3, :reconstruct => false),
-        Dict(:α => 10.0^(-6), :FETypes => (H1BR{2}, L2P0{1}), :nrefs => 3, :reconstruct => true),
+        Dict(:α => 10.0^(-6), :FETypes => (H1BR{2}, L2P0{1}), :nrefs => 4, :reconstruct => false),
+        Dict(:α => 10.0^(-6), :FETypes => (H1BR{2}, L2P0{1}), :nrefs => 4, :reconstruct => true),
     ]
 )
 
@@ -493,7 +502,8 @@ run_configuration_convergence_plot_complex_example = RunConfiguration(
 )
 
 run_configurations = [
-    run_configuration_show_modes,
+    run_configuration_show_modes_simple_example,
+    run_configuration_show_modes_simple_example_with_modified_rhs,
     run_configuration_error_for_taylor_hood_element,
     run_configuration_non_pressure_robust_example,
     run_configuration_show_modes_complex_example,

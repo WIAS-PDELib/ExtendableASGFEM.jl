@@ -10,6 +10,20 @@ struct StokesPrimal{Tv, MT, VT, GT}
     bdofs::Vector{Int}
     nmodes::Int
     vsize::Array{Int, 1}
+    couplings::Vector{Tuple{Int, Int, Int, Tv}}
+end
+
+function StokesPrimal(A0, A, B, G, bdofs, nmodes, vsize)
+    Tv = eltype(G)
+    M = length(A)
+    couplings = Tuple{Int, Int, Int, Tv}[]
+    for mu in 1:nmodes, nu in 1:nmodes, e in 1:M
+        g = G[(e - 1) * nmodes + mu, nu]
+        if g != 0
+            push!(couplings, (mu, nu, e, g))
+        end
+    end
+    return StokesPrimal{Tv, typeof(A0), typeof(couplings), typeof(G)}(A0, A, B, G, bdofs, nmodes, vsize, couplings)
 end
 
 struct StokesPrimalPreconditioner{Tv, FAC}
@@ -21,7 +35,7 @@ struct StokesPrimalPreconditioner{Tv, FAC}
     vsize::Array{Int, 1}
 end
 
-function stokesPrimalPreconditioner(
+function StokesPrimalPreconditioner(
         A0::ExtendableSparseMatrix{Tv, Ti},
         B::ExtendableSparseMatrix{Tv, Ti},
         bdofs,
@@ -102,20 +116,19 @@ end
 
 function LinearAlgebra.mul!(Ax::Vector{Tv}, S::StokesPrimal{Tv, MT, VT, GT}, x) where {Tv, MT, VT, GT}
     fill!(Ax, 0)
-    g::Tv = 0
+    A::Vector{MT} = S.A
     vsize::Array{Int, 1} = S.vsize
     nmodes::Int = S.nmodes
-    G::GT = S.G
-    A::Vector{MT} = S.A
-    M::Int = length(A) # size(G,1) / nmodes
+    couplings = S.couplings
     a::Int = 0
     b::Int = 0
     a2::Int = 0
     b2::Int = 0
     A0::MT = S.A0
     B::MT = S.B
+
+    # deterministic part
     for mu in 1:nmodes
-        # deterministic part
         a = (mu - 1) * vsize[1] + 1
         b = mu * vsize[1]
         a2 = a
@@ -129,24 +142,21 @@ function LinearAlgebra.mul!(Ax::Vector{Tv}, S::StokesPrimal{Tv, MT, VT, GT}, x) 
         a = nmodes * vsize[1] + (mu - 1) * vsize[2] + 1
         b = nmodes * vsize[1] + mu * vsize[2]
         addblock_matmul!(view(Ax, a:b), B[1, 1], view(x, a2:b2); transposed = true)
-
-        # stochastic part
-        a = (mu - 1) * vsize[1] + 1
-        b = mu * vsize[1]
-        for nu in 1:nmodes, e in 1:M
-            g = G[(e - 1) * nmodes + mu, nu]
-            if abs(g) > 1.0e-12
-                a2 = (nu - 1) * vsize[1] + 1
-                b2 = nu * vsize[1]
-                addblock_matmul!(view(Ax, a:b), A[e][1, 1], view(x, a2:b2); factor = g)
-            end
-        end
     end
 
-    return nothing
+    # stochastic part
+    for (mu, nu, e, g) in couplings
+        a = (mu - 1) * vsize[1] + 1
+        b = mu * vsize[1]
+        a2 = (nu - 1) * vsize[1] + 1
+        b2 = nu * vsize[1]
+        addblock_matmul!(view(Ax, a:b), A[e][1, 1], view(x, a2:b2); factor = g)
+    end
+
+    return Ax
 end
 
-Base.eltype(S::StokesPrimal) = typeof(S).parameters[1]
+Base.eltype(::StokesPrimal{Tv}) where {Tv} = Tv
 Base.size(S::StokesPrimal) = S.nmodes .* (size(S.A0.entries) .+ size(S.B.entries)[2])
 
 function solve_stokes_primal!(
@@ -157,9 +167,9 @@ function solve_stokes_primal!(
     @info "Solving StochasticFEM iteratively and matrix-free (ndofs = $(length(SolutionSGFEM.entries)))..."
     vsize = [SolutionSGFEM[1].FES.ndofs, SolutionSGFEM[nmodes + 1].FES.ndofs]
 
-    S = StokesPrimal{eltype(G), typeof(A0), typeof(b0), typeof(G)}(A0, A, B, G, bdofs, nmodes, vsize)
+    S = StokesPrimal(A0, A, B, G, bdofs, nmodes, vsize)
     @info "...initializing Preconditioner"
-    @time P = stokesPrimalPreconditioner(A0.entries, B.entries, bdofs, nmodes, vsize)
+    @time P = StokesPrimalPreconditioner(A0.entries, B.entries, bdofs, nmodes, vsize)
 
     ## right-hand side
     b = deepcopy(SolutionSGFEM)
