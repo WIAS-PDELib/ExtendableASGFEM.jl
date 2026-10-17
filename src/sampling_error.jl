@@ -260,7 +260,7 @@ function sample_reference_solution(
     sol_det = Array{FEVector, 1}(undef, nsamples)
 
     ## compute deterministic solutions (in parallel)
-    Threads.@threads for s in 1:nsamples
+    for s in 1:nsamples
         ## deterministic problem description
         PD, _ = deterministic_problem(
             problem,

@@ -4,18 +4,18 @@
 
 struct StokesPrimal{Tv, MT, VT, GT}
     A0::MT
-    A::Vector{MT}
+    Am::Vector{MT}
     B::MT
     G::GT
     bdofs::Vector{Int}
     nmodes::Int
-    vsize::Array{Int, 1}
+    vsize::Vector{Int}
     couplings::Vector{Tuple{Int, Int, Int, Tv}}
 end
 
-function StokesPrimal(A0, A, B, G, bdofs, nmodes, vsize)
+function StokesPrimal(A0, Am, B, G, bdofs, nmodes, vsize)
     Tv = eltype(G)
-    M = length(A)
+    M = length(Am)
     couplings = Tuple{Int, Int, Int, Tv}[]
     for mu in 1:nmodes, nu in 1:nmodes, e in 1:M
         g = G[(e - 1) * nmodes + mu, nu]
@@ -23,16 +23,18 @@ function StokesPrimal(A0, A, B, G, bdofs, nmodes, vsize)
             push!(couplings, (mu, nu, e, g))
         end
     end
-    return StokesPrimal{Tv, typeof(A0), typeof(couplings), typeof(G)}(A0, A, B, G, bdofs, nmodes, vsize, couplings)
+    return StokesPrimal{Tv, typeof(A0), typeof(couplings), typeof(G)}(
+        A0, Am, B, G, bdofs, nmodes, vsize, couplings
+    )
 end
 
 struct StokesPrimalPreconditioner{Tv, FAC}
     LUS::FAC
-    DA::Array{Tv, 1}
-    temp::Array{Tv, 1}
+    DA::Vector{Tv}
+    temp::Vector{Tv}
     bdofs::Vector{Int}
     nmodes::Int
-    vsize::Array{Int, 1}
+    vsize::Vector{Int}
 end
 
 function StokesPrimalPreconditioner(
@@ -42,7 +44,7 @@ function StokesPrimalPreconditioner(
         nmodes,
         vsize
     ) where {Tv, Ti}
-    DA::Array{Tv, 1} = zeros(Tv, size(A0, 1))
+    DA::Vector{Tv} = zeros(Tv, size(A0, 1))
     for j in 1:length(DA)
         DA[j] = A0[j, j]
     end
@@ -50,8 +52,8 @@ function StokesPrimalPreconditioner(
     # compute S = B inv(A_diag) B'
     S = ExtendableSparseMatrix{Tv, Ti}(size(B, 2), size(B, 2))
     cscmat::SparseMatrixCSC{Tv, Ti} = B.cscmatrix
-    rows::Array{Ti, 1} = rowvals(cscmat)
-    valsB::Array{Tv, 1} = cscmat.nzval
+    rows::Vector{Ti} = rowvals(cscmat)
+    valsB::Vector{Tv} = cscmat.nzval
     value::Tv = 0
     row::Ti = 0
     for i in 1:size(B, 2), j in 1:size(B, 2)
@@ -76,13 +78,12 @@ end
 
 @inline LinearAlgebra.ldiv!(C::StokesPrimalPreconditioner, b) = ldiv!(b, C, b)
 @inline function LinearAlgebra.ldiv!(y, C::StokesPrimalPreconditioner{Tv, FAC}, b) where {Tv, FAC}
-    a::Int = 0
-    c::Int = 0
-    DA::Array{Tv, 1} = C.DA
-    temp::Array{Tv, 1} = C.temp
+    DA::Vector{Tv} = C.DA
+    temp::Vector{Tv} = C.temp
     nmodes::Int = C.nmodes
     bdofs = C.bdofs
-    vsize::Array{Int, 1} = C.vsize
+    vsize::Vector{Int} = C.vsize
+
     for mu in 1:nmodes
         # upper left block of preconditioner (I ⊗ A_diag)
         a = (mu - 1) * vsize[1] + 1
@@ -90,16 +91,15 @@ end
         for i in a:c
             y[i] = b[i] / DA[i - a + 1]
         end
-        a = nmodes * vsize[1] + (mu - 1) * vsize[2] + 1
-        c = nmodes * vsize[1] + mu * vsize[2]
+        a2 = nmodes * vsize[1] + (mu - 1) * vsize[2] + 1
+        c2 = nmodes * vsize[1] + mu * vsize[2]
         if y !== b
-            ldiv!(view(y, a:c), C.LUS, view(b, a:c))
+            ldiv!(view(y, a2:c2), C.LUS, view(b, a2:c2))
         else
-            ldiv!(temp, C.LUS, view(b, a:c))
-            y[a:c] .= temp
+            ldiv!(temp, C.LUS, view(b, a2:c2))
+            y[a2:c2] .= temp
         end
 
-        a = (mu - 1) * vsize[1] + 1
         for dof in bdofs
             y[a + dof - 1] = 0
         end
@@ -116,8 +116,8 @@ end
 
 function LinearAlgebra.mul!(Ax::Vector{Tv}, S::StokesPrimal{Tv, MT, VT, GT}, x) where {Tv, MT, VT, GT}
     fill!(Ax, 0)
-    A::Vector{MT} = S.A
-    vsize::Array{Int, 1} = S.vsize
+    Am::Vector{MT} = S.Am
+    vsize::Vector{Int} = S.vsize
     nmodes::Int = S.nmodes
     couplings = S.couplings
     a::Int = 0
@@ -131,17 +131,11 @@ function LinearAlgebra.mul!(Ax::Vector{Tv}, S::StokesPrimal{Tv, MT, VT, GT}, x) 
     for mu in 1:nmodes
         a = (mu - 1) * vsize[1] + 1
         b = mu * vsize[1]
-        a2 = a
-        b2 = b
-        addblock_matmul!(view(Ax, a:b), A0[1, 1], view(x, a2:b2))
         a2 = nmodes * vsize[1] + (mu - 1) * vsize[2] + 1
         b2 = nmodes * vsize[1] + mu * vsize[2]
+        addblock_matmul!(view(Ax, a:b), A0[1, 1], view(x, a:b))
         addblock_matmul!(view(Ax, a:b), B[1, 1], view(x, a2:b2))
-        a2 = a
-        b2 = b
-        a = nmodes * vsize[1] + (mu - 1) * vsize[2] + 1
-        b = nmodes * vsize[1] + mu * vsize[2]
-        addblock_matmul!(view(Ax, a:b), B[1, 1], view(x, a2:b2); transposed = true)
+        addblock_matmul!(view(Ax, a2:b2), B[1, 1], view(x, a:b); transposed = true)
     end
 
     # stochastic part
@@ -150,7 +144,7 @@ function LinearAlgebra.mul!(Ax::Vector{Tv}, S::StokesPrimal{Tv, MT, VT, GT}, x) 
         b = mu * vsize[1]
         a2 = (nu - 1) * vsize[1] + 1
         b2 = nu * vsize[1]
-        addblock_matmul!(view(Ax, a:b), A[e][1, 1], view(x, a2:b2); factor = g)
+        addblock_matmul!(view(Ax, a:b), Am[e][1, 1], view(x, a2:b2); factor = g)
     end
 
     return Ax
@@ -160,14 +154,14 @@ Base.eltype(::StokesPrimal{Tv}) where {Tv} = Tv
 Base.size(S::StokesPrimal) = S.nmodes .* (size(S.A0.entries) .+ size(S.B.entries)[2])
 
 function solve_stokes_primal!(
-        SolutionSGFEM::SGFEVector, A0, A, B, b0, G, nmodes, bdofs;
+        SolutionSGFEM::SGFEVector, A0, Am, B, b0, G, nmodes, bdofs;
         atol = 1.0e-14, rtol = 1.0e-14
     )
     ## create fullmatrix-free matrix evaluator
     @info "Solving StochasticFEM iteratively and matrix-free (ndofs = $(length(SolutionSGFEM.entries)))..."
     vsize = [SolutionSGFEM[1].FES.ndofs, SolutionSGFEM[nmodes + 1].FES.ndofs]
 
-    S = StokesPrimal(A0, A, B, G, bdofs, nmodes, vsize)
+    S = StokesPrimal(A0, Am, B, G, bdofs, nmodes, vsize)
     @info "...initializing Preconditioner"
     @time P = StokesPrimalPreconditioner(A0.entries, B.entries, bdofs, nmodes, vsize)
 
@@ -182,7 +176,7 @@ function solve_stokes_primal!(
     SolutionSGFEM.entries .= x
     @show history
 
-    # enforce uniqueness of the pressure solution
+    # normalization of the pressure solution
     xgrid = SolutionSGFEM[1].FES.xgrid
     for i in 1:nmodes
         pIntegrator = ItemIntegrator([id(1)])
@@ -207,8 +201,8 @@ function solve_stokes_primal!(
     return nothing
 end
 
-function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, A, B, b0, G, nmodes, bdofs)
-    M::Int = length(A)
+function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, Am, B, b0, G, nmodes, bdofs)
+    M::Int = length(Am)
     FES = SolutionSGFEM.FES_space
     bigFES = Array{FESpace{Float64, Int32}, 1}([FES[1] for j in 1:nmodes])
     append!(bigFES, [FES[2] for j in 1:nmodes])
@@ -230,7 +224,7 @@ function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, A, B, b0, G, n
         for e in 1:M
             g = G[(e - 1) * nmodes + j, k] # ⟨ ξ_m ψ_mi(j) ψ_mi(k) ⟩
             if abs(g) > 1.0e-12
-                addblock!(bigS[j, k], A[e][1, 1]; factor = g)
+                addblock!(bigS[j, k], Am[e][1, 1]; factor = g)
             end
         end
     end
@@ -256,7 +250,7 @@ function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, A, B, b0, G, n
     @info "Solving StochasticFEM with full matrix..."
     SolutionSGFEM.entries .= bigS.entries \ bigb.entries
 
-    ## enforce uniqueness of the pressure solution
+    ## normalization of the pressure solution
     xgrid = SolutionSGFEM[1].FES.xgrid
     for i in 1:nmodes
         pIntegrator = ItemIntegrator([id(1)])

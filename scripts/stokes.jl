@@ -30,7 +30,7 @@ using Pkg
 using Symbolics
 using UnicodePlots
 
-function prepare_data_for_complex_example(; ν = 1.0, kwargs...)
+function prepare_data_for_complex_example(; α = 10^4, ν = 1.0, kwargs...)
     @variables x1, x2
 
     ψ = x1^2 * (x1 - 1)^2 * x2^2 * (x2 - 1)^2
@@ -41,7 +41,7 @@ function prepare_data_for_complex_example(; ν = 1.0, kwargs...)
         Symbolics.derivative(∇u[1, 1], x1) + Symbolics.derivative(∇u[1, 2], x2),
         Symbolics.derivative(∇u[2, 1], x1) + Symbolics.derivative(∇u[2, 2], x2),
     ]
-    p = x1^3
+    p = α * x1^3
     ∇p = Symbolics.gradient(p, [x1, x2])
     f = - ν * Δu + ∇p
     curl_f = Symbolics.derivative(f[2], x1) - Symbolics.derivative(f[1], x2)
@@ -49,8 +49,9 @@ function prepare_data_for_complex_example(; ν = 1.0, kwargs...)
     eval_f! = build_function(f, x1, x2, expression = Val{false})[2]
     eval_f_curl = build_function(curl_f, x1, x2, expression = Val{false})
     eval_u! = build_function(0 * [x1, x2], x1, x2, expression = Val{false})[2]
+    eval_∇p! = build_function(∇p, x1, x2, expression = Val{false})
 
-    return (result, x) -> eval_f!(result, x...), (result, x) -> (result[1] = eval_f_curl(x...)), (result, x) -> eval_u!(result, x...)
+    return (result, x) -> eval_f!(result, x...), (result, x) -> (result[1] = eval_f_curl(x...)), (result, x) -> eval_u!(result, x...), (result, x) -> eval_∇p!(result, x...)
 end
 
 function prepare_data_for_simple_example(; kwargs...)
@@ -71,17 +72,17 @@ function filename(data; folder = "data", add = "", makepath = false)
     problem = data["problem"]
     decay = data["decay"]
     mean = data["mean"]
-    order = data["order"]
     domain = data["domain"]
     θ_stochastic = data["θ_stochastic"]
     θ_spatial = data["θ_spatial"]
     tail_extension = data["tail_extension"]
     maxdofs = data["maxdofs"]
+    reconstruct = data["reconstruct"]
     filename = "$(folder)/$(problem)/$(domain)/"
     if makepath
         mkpath(filename)
     end
-    filename *= add * "order=$(order)_maxdofs=$(maxdofs)_decay=$(decay)_mean=$(mean)_θ=($(θ_spatial),$(θ_stochastic))_tail=$(tail_extension)"
+    filename *= add * "maxdofs=$(maxdofs)_decay=$(decay)_mean=$(mean)_θ=($(θ_spatial),$(θ_stochastic))_reconstruct=$(reconstruct)"
     return filename
 end
 
@@ -90,9 +91,10 @@ default_args = Dict(
     "domain" => "square",
     "order" => 1,
     "problem" => StokesProblemPrimal,
+    "prepare_data" => prepare_data_for_complex_example,
     "C" => StochasticCoefficientCosinus,
     "decay" => 2,
-    "mean" => 1.0,
+    "mean" => 1,
     "maxm" => 150,
     "bonus_quadorder_a" => 2,
     "f" => nothing,
@@ -101,7 +103,7 @@ default_args = Dict(
     "θ_spatial" => 0.5,
     "factor_tail" => 1,
     "tail_extension" => [10, 2], # for [0] mode, and all others
-    "maxdofs" => 3232,
+    "maxdofs" => 10000,
     "initial_modes" => [[0]],
     "nsamples" => 10,
     "use_iterative_solver" => true,
@@ -206,10 +208,6 @@ function _main(
     use_iterative_solver = data["use_iterative_solver"]
     reconstruct = data["reconstruct"]
 
-    if !reconstruct
-        throw("Error estimator for 'reconstruct=false' is unimplemented")
-    end
-
     prepare_multi_indices!(multi_indices)
     @info "initial multi_indices = $(multi_indices)"
 
@@ -270,9 +268,7 @@ function _main(
         FES = [FESpace{FETypes[1]}(xgrid), FESpace{FETypes[2]}(xgrid)]
         unames = ["u", "p"]
 
-        # Samples, _ = sample_distribution(TensorBasis, 2; M = 2, Mweights = 2)
-        #f!, f_curl!, boundary_data! = prepare_data_for_simple_example()
-        f!, f_curl!, boundary_data! = isnothing(data["f"]) ? prepare_data_for_complex_example(; ν = mean) : data["f"]
+        f!, f_curl!, boundary_data!, ∇p! = prepare_data_for_complex_example(; ν = mean)
 
         sol = SGFEVector(FES, TensorBasis; active_modes = 1:length(multi_indices), unames = unames)
         time_solve = @elapsed bdofs = solve!(
@@ -294,12 +290,12 @@ function _main(
         end
 
         weightederrorH1, weightederrorL2u, weightederrorL2p, uniformerrorH1, uniformerrorL2u, uniformerrorL2p = calculate_sampling_error_2(
-            sol, (result, qpinfo) -> (f!(result, qpinfo.x)), C; problem, (exact_boundary!) = (result, qpinfo) -> (boundary_data!(result, qpinfo.x)), metrics_configuration = stokes_metrics_configuration, order = order + 1, nsamples, Msamples = 20, reconstruct = reconstruct
+            sol, (result, qpinfo) -> (f!(result, qpinfo.x)), C; problem, (exact_boundary!) = (result, qpinfo) -> (boundary_data!(result, qpinfo.x)), metrics_configuration = stokes_metrics_configuration, order = order + 1, nsamples, Msamples = 100, reconstruct = reconstruct
         )
 
         tail_extension = data["tail_extension"]
         time_estimate = @elapsed η4modes, η4cells, multi_indices_extended = estimate(
-            problem, sol, C; rhs = f!, rhs_curl = f_curl!,
+            problem, sol, C; rhs! = f!, rhs_curl! = f_curl!, ∇p! = ∇p!,
             bonus_quadorder = max(bonus_quadorder_a, bonus_quadorder_f), tail_extension = tail_extension
         )
         for (multi_index, error) in zip(multi_indices_extended, η4modes)
@@ -403,7 +399,6 @@ function _main(
 end
 
 function produce_plots(;
-        order = default_args["order"],
         decay = default_args["decay"],
         legend_position = :lb,
         xscale = log10,
@@ -416,7 +411,6 @@ function produce_plots(;
         template = :convergence,
         cols = nothing,
         xlabel = "ndofs",
-        show_optimal_rate = false,
         kwargs...
     )
     colors = Makie.wong_colors()
@@ -431,6 +425,8 @@ function produce_plots(;
         cols = isnothing(cols) ? [:estimate, :exact_error_stress, :exact_error_p] : cols
     elseif template == :convergence_with_L2
         cols = isnothing(cols) ? [:estimate, :exact_error_stress, :exact_error_u, :exact_error_p] : cols
+    elseif template == :convergence_with_L2_without_p
+        cols = isnothing(cols) ? [:estimate, :exact_error_stress, :exact_error_u] : cols
     elseif template == :active_vs_tail
         cols = isnothing(cols) ? [:estimate_active, :estimate_tail] : cols
     elseif template == :dofs
@@ -442,28 +438,24 @@ function produce_plots(;
         @error "template = $template not implemented"
     end
 
-    if typeof(order) <: Real
-        order = [order]
-    end
     if typeof(decay) <: Real
         decay = [decay]
     end
-    data = Array{Dict{String, Any}, 2}(undef, length(order), length(decay))
-    for o in 1:length(order), d in 1:length(decay)
-        basedata["order"] = order[o]
-        basedata["decay"] = decay[d]
-        data[o, d], ~ = produce_or_load(_main, basedata, filename = filename, force = force)
-        xgrid = data[o, d]["solution"].FES_space[1].xgrid
+    data = Vector{Dict{String, Any}}(undef, length(decay))
+    for (i, d) in enumerate(decay)
+        basedata["decay"] = d
+        data[i], ~ = produce_or_load(_main, basedata, filename = filename, force = force)
+        xgrid = data[i]["solution"].FES_space[1].xgrid
         repair_grid!(xgrid)
         xgrid[BFaceRegions] .= 1
 
         gplt = GridVisualize.gridplot(xgrid; Plotter = CairoMakie, linewidth = 1, colorbar = :none, legend = :none)
-        filename_plot = filename(basedata; add = "grid_", folder = "plots", makepath = true) * ".png" # ToDo: Svg
+        filename_plot = filename(basedata; add = "grid_", folder = "plots", makepath = true) * ".svg"
         CairoMakie.save(filename_plot, gplt)
         @info "grid plot for $cols saved under $filename_plot"
     end
 
-    for d in 1:length(decay)
+    for (i, d) in enumerate(decay)
         ylabel = ""
         if length(cols) == 1
             if cols[1] == :exact_error_u
@@ -497,120 +489,107 @@ function produce_plots(;
         end
 
         @info "producing convergence history..."
-        for o in 1:length(order)
-            df = data[o, d]["results"]
-            nlevels = size(df, 1)
-            ndofs = nothing
-            ndofs_space = nothing
-            ndofs_stochastic = nothing
-            for c in 1:length(cols)
-                color = colors[o]
-                ndofs_space = df[!, :ndofs_space]
-                ndofs_stochastic = df[!, :nmodes]
-                if template == :dofs
-                    ndofs = 1:length(ndofs_space)
-                else
-                    ndofs = df[!, :ndofs_space] .* df[!, :nmodes]
-                end
-                if cols[c] == :ndofs_all
-                    plotdata = df[!, :ndofs_space] .* df[!, :nmodes]
-                else
-                    plotdata = df[!, cols[c]]
-                end
+        df = data[i]["results"]
+        ndofs = nothing
+        ndofs_space = nothing
+        ndofs_stochastic = nothing
+        for (i, col) in enumerate(cols)
+            ndofs_space = df[!, :ndofs_space]
+            ndofs_stochastic = df[!, :nmodes]
+            if template == :dofs
+                ndofs = 1:length(ndofs_space)
+            else
+                ndofs = df[!, :ndofs_space] .* df[!, :nmodes]
+            end
+            if col == :ndofs_all
+                plotdata = df[!, :ndofs_space] .* df[!, :nmodes]
+            else
+                plotdata = df[!, col]
+            end
 
-                label = ""
-                if length(cols) > 1
-                    if cols[c] == :exact_error_u
-                        label = L"|| u - u_h ||_{L^2}"
-                    elseif cols[c] == :exact_error_stress
-                        label = L"|| u - u_h ||_A"
-                    elseif cols[c] == :estimate
-                        if scaling_factor !== nothing
-                            plotdata .*= scaling_factor
-                        end
-                        label = L"\eta"
-                    elseif cols[c] == :exact_error_p
-                        label = L"|| p - p_h ||_{L^2}"
-                    elseif cols[c] == :estimate_tail
-                        if scaling_factor !== nothing
-                            plotdata .*= scaling_factor
-                        end
-                        label = L"\eta(\partial_h \Lambda)"
-                    elseif cols[c] == :estimate_active
-                        if scaling_factor !== nothing
-                            plotdata .*= scaling_factor
-                        end
-                        label = L"\eta(\Lambda)"
-                    elseif cols[c] == :ndofs_space
-                        label = L"| V_h |"
-                    elseif cols[c] == :nmodes
-                        label = L"| \Lambda |"
-                    elseif cols[c] == :ndofs_all
-                        label = L"| \mathcal{V}_h |"
+            label = ""
+            if length(cols) > 1
+                if col == :exact_error_u
+                    label = L"|| u - u_h ||_{L^2}"
+                elseif col == :exact_error_stress
+                    label = L"|| u - u_h ||_A"
+                elseif col == :estimate
+                    if scaling_factor !== nothing
+                        plotdata .*= scaling_factor
                     end
+                    label = L"\eta"
+                elseif col == :exact_error_p
+                    label = L"|| p - p_h ||_{L^2}"
+                elseif col == :estimate_tail
+                    if scaling_factor !== nothing
+                        plotdata .*= scaling_factor
+                    end
+                    label = L"\eta(\partial_h \Lambda)"
+                elseif col == :estimate_active
+                    if scaling_factor !== nothing
+                        plotdata .*= scaling_factor
+                    end
+                    label = L"\eta(\Lambda)"
+                elseif col == :ndofs_space
+                    label = L"| V_h |"
+                elseif col == :nmodes
+                    label = L"| \Lambda |"
+                elseif col == :ndofs_all
+                    label = L"| \mathcal{V}_h |"
                 end
-                label = L"%$label order = %$(order[o])"
-                scatterlines!(ndofs, plotdata, label = label, color = color, markersize = markersize, linewidth = 2, linestyle = linestyles[c])
             end
-            if show_optimal_rate
-                label = L"\mathcal{O}(N_\text{space}^{%$(-order[o]/2)})"
-                scatterlines!(ndofs, ndofs .^ (-order[o] / 2), label = label, color = :gray, markersize = 0, linewidth = 2, linestyle = linestyles[length(cols) + 1])
-            end
+            scatterlines!(ndofs, plotdata, label = label, color = colors[i], markersize = markersize, linewidth = 2, linestyle = linestyles[i])
         end
-        axislegend(ax_conv, position = legend_position, merge = true, labelsize = 16, orientation = :horizontal, nbanks = length(order) * length(cols) + 1)
+        axislegend(ax_conv, position = legend_position, merge = true, labelsize = 16, orientation = :horizontal, nbanks = length(cols) + 1)
 
-        basedata["order"] = order
-        basedata["decay"] = decay[d]
-        filename_plot = filename(basedata; add = "$(template)_", folder = "plots", makepath = true) * ".png" # ToDo: Svg
+        basedata["decay"] = decay[i]
+        filename_plot = filename(basedata; add = "$(template)_", folder = "plots", makepath = true) * ".svg"
 
         CairoMakie.save(filename_plot, f_conv)
         @info "convergence plot for $cols saved under $filename_plot"
     end
 
     ## bar plot
-    for o in 1:length(order)
-        max4mode = zeros(length(decay), plotM)
-        cat = zeros(Int, plotM * length(decay))
-        height = zeros(Float64, plotM * length(decay))
-        groups = zeros(Int, plotM * length(decay))
-        for d in 1:length(decay)
-            multi_indices = data[o, d]["multi_indices"]
-            nmodes = length(multi_indices)
-            M = min(maximum(length.(multi_indices)), plotM)
-            max4mode[d, 1:M] = [maximum([multi_indices[j][k] for j in 1:nmodes]) for k in 1:M]
-            cat[d:length(decay):end] .= 1:plotM
-            groups[d:length(decay):end] .= d
-            height[d:length(decay):end] .= max4mode[d, :]
-        end
-
-
-        # Plot
-        replace!(height, 0 => 0.1)
-        yticks = (1:maxdegree, ["$(Int(j))" for j in 1:maxdegree])
-        xticks = (1:plotM, [j % 2 == 1 ? "$(Int(j))" : "" for j in 1:plotM])
-        f_bar = Figure(fontsize = 12, size = (900, 250))
-        Axis(f_bar[1, 1], limits = (0, plotM, 0, maxdegree), yticks = yticks, xticks = xticks, xlabel = "stochastic dimension", ylabel = "max degree", xticklabelrotation = pi / 2)
-        CairoMakie.barplot!(
-            cat, height,
-            dodge = AbstractVector{Integer}(groups),
-            color = colors[groups]
-        ) # ToDo: Narrower plot?
-
-        # Legend
-        labels = ["decay $d" for d in decay]
-        elements = [PolyElement(polycolor = colors[i]) for i in 1:length(labels)]
-        title = ""
-
-        Legend(f_bar[1, 2], elements, labels, title)
-
-        basedata["decay"] = decay
-        basedata["order"] = order[o]
-        filename_plot = filename(basedata; add = "barplot_", folder = "plots", makepath = true) * ".png" # ToDo: Svg
-
-        CairoMakie.save(filename_plot, f_bar)
-        @info "modes bar plot for $cols saved under $filename_plot"
+    max4mode = zeros(length(decay), plotM)
+    cat = zeros(Int, plotM * length(decay))
+    height = zeros(Float64, plotM * length(decay))
+    groups = zeros(Int, plotM * length(decay))
+    for d in 1:length(decay)
+        multi_indices = data[d]["multi_indices"]
+        nmodes = length(multi_indices)
+        M = min(maximum(length.(multi_indices)), plotM)
+        max4mode[d, 1:M] = [maximum([multi_indices[j][k] for j in 1:nmodes]) for k in 1:M]
+        cat[d:length(decay):end] .= 1:plotM
+        groups[d:length(decay):end] .= d
+        height[d:length(decay):end] .= max4mode[d, :]
     end
-    return
+
+    # Plot
+    replace!(height, 0 => 0.1)
+    yticks = (1:maxdegree, ["$(Int(j))" for j in 1:maxdegree])
+    xticks = (1:plotM, [j % 2 == 1 ? "$(Int(j))" : "" for j in 1:plotM])
+    f_bar = Figure(fontsize = 12, size = (900, 250))
+    Axis(f_bar[1, 1], limits = (0, plotM, 0, maxdegree), yticks = yticks, xticks = xticks, xlabel = "stochastic dimension", ylabel = "max degree", xticklabelrotation = pi / 2)
+    CairoMakie.barplot!(
+        cat, height,
+        dodge = AbstractVector{Integer}(groups),
+        color = colors[groups]
+    ) # ToDo: Narrower plot?
+
+    # Legend
+    labels = ["decay $d" for d in decay]
+    elements = [PolyElement(polycolor = colors[i]) for i in 1:length(labels)]
+    title = ""
+
+    Legend(f_bar[1, 2], elements, labels, title)
+
+    basedata["decay"] = decay
+    filename_plot = filename(basedata; add = "barplot_", folder = "plots", makepath = true) * ".svg"
+
+    CairoMakie.save(filename_plot, f_bar)
+    @info "modes bar plot for $cols saved under $filename_plot"
+
+    return nothing
 end
 
 function repair_grid!(xgrid::ExtendableGrid)
