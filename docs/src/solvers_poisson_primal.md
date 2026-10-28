@@ -55,9 +55,10 @@ solve_primal!(SolutionSGFEM::SGFEVector, A0, Am, b0, G, nmodes, bfac; atol=1e-14
 
 1. Extract boundary information from the `SGFEVector`'s finite element space.
 2. Build the matrix-free operator and preconditioner.
-3. Assemble the right-hand side $b$ by adding the deterministic force block $b_0$ to mode 1 and zeroing boundary entries on all modes.
-4. Solve with Krylov.jl's GMRES: `Krylov.gmres(S, b, x; ldiv=true, M=P)`, where $P$ is the block-diagonal preconditioner.
-5. Report the residual norm $\|\mathbf{Ax} - \mathbf{b}\|_2$.
+3. Assemble the right-hand side $b$ by zeroing a copy of the solution vector, adding the deterministic force block $b_0$ to mode 1 and zeroing boundary entries on all modes.
+4. Interpret nonzero entries of the solution vector as an initial guess $u_0$ (e.g. produced by `interpolate_initial_guess!` from the previous level of an adaptive loop). Its boundary dofs are zeroed and it is eliminated from the system: the subsequent GMRES starts from zero, solves $Ax = b - Au_0$ and returns $u = u_0 + x$.
+5. Solve via LinearSolve's `KrylovJL_GMRES`, where $P$ is the block-diagonal preconditioner.
+6. Report the residual norm $\|\mathbf{Ax} - \mathbf{b}\|_2$.
 
 The default tolerances are `1e-14`.
 

@@ -74,6 +74,7 @@ default_args = Dict(
     "nsamples" => 150,
     "use_equilibration_estimator" => false,
     "use_iterative_solver" => true,
+    "use_initial_guess" => true, # interpolate previous level solution as initial guess for GMRES
     "Plotter" => nothing,
 )
 
@@ -190,6 +191,7 @@ function _main(
     maxdofs = data["maxdofs"]
     order = data["order"]
     use_iterative_solver = data["use_iterative_solver"]
+    use_initial_guess = data["use_initial_guess"]
     use_equilibration_estimator = data["use_equilibration_estimator"]
 
     prepare_multi_indices!(multi_indices)
@@ -231,6 +233,7 @@ function _main(
     )
 
     sol = nothing
+    sol_prev = nothing
     lvl = 0
     while (true)
 
@@ -272,9 +275,18 @@ function _main(
         end
         sol = SGFEVector(FES, TensorBasis; active_modes = 1:length(multi_indices), unames = unames)
 
+        ## use previous solution as initial guess for the iterative solver
+        ## (interpolate spatial blocks of previously active modes to the new grid,
+        ##  modes without predecessor start from zero)
+        if use_initial_guess && use_iterative_solver && (sol_prev !== nothing) && !(problem <: LogTransformedPoissonProblemDual)
+            nmoved = interpolate_initial_guess!(sol, sol_prev)
+            @info "...interpolated initial guess from $(nmoved) modes of previous level"
+        end
+
         ## call solve
         time_solve = @elapsed bdofs = solve!(problem, sol, C; rhs = f!, bonus_quadorder_a = bonus_quadorder_a, bonus_quadorder_f = bonus_quadorder_f, use_iterative_solver = use_iterative_solver, debug = debug)
         df[lvl, :time_solve] = time_solve
+        sol_prev = sol
 
         ############
         ## report ##

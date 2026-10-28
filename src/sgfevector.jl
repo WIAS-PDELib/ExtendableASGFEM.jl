@@ -197,3 +197,100 @@ function norms(SGFEV::SGFEVector{T}, p::Real = 2) where {T}
     end
     return n
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+internal helper: canonical form of a multi-index for comparisons across bases
+with different lengths (trailing zeros are ignored)
+"""
+function _multiindex_key(mi)
+    j = findlast(!=(0), mi)
+    return j === nothing ? (0,) : ntuple(k -> mi[k], j)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Fill `sol.entries` with the interpolated values of `sol_prev`, so that it can be
+used as initial guess for iterative solvers in an adaptive refinement loop.
+
+For every active stochastic mode of `sol` that has a predecessor in `sol_prev`, the
+corresponding spatial coefficient blocks are transferred:
+- if the grid is unchanged (stochastic refinement), the blocks are copied directly
+- if the grid was refined (spatial refinement), the block of `sol_prev` is pointwise
+  evaluated at the dof points of `sol` via `lazy_interpolate!`
+
+Modes of `sol` without predecessor in `sol_prev` are left untouched (usually zero).
+Requires matching finite element types (per unknown) in both `SGFEVector`s.
+
+# Keywords
+- `match_modes`: how to associate modes of `sol` with modes of `sol_prev`
+  - `:append` (default): assume that both mode lists coincide up to the length of the
+    shorter one, i.e. new modes were only appended at the end (as done by the AFEM
+    loops in `scripts/`). A consistency check of the multi-indices (ignoring trailing
+    zeros) is performed; if it fails, a warning is issued and `:multiindex` is used.
+  - `:multiindex`: match modes by their multi-index (ignoring trailing zeros).
+
+Returns the number of transferred stochastic modes.
+"""
+function interpolate_initial_guess!(sol::SGFEVector, sol_prev::SGFEVector; match_modes = :append)
+    nunknowns = length(sol.FES_space)
+    if nunknowns != length(sol_prev.FES_space)
+        @warn "number of unknowns differs, skipping initial guess interpolation"
+        return 0
+    end
+    for u in 1:nunknowns
+        if eltype(sol.FES_space[u]) != eltype(sol_prev.FES_space[u])
+            @warn "finite element types differ, skipping initial guess interpolation"
+            return 0
+        end
+    end
+
+    nmodes = num_multiindices(sol)
+    nmodes_prev = num_multiindices(sol_prev)
+    keys_new = [_multiindex_key(sol.TB.multi_indices[sol.active_modes[k]]) for k in 1:nmodes]
+    keys_prev = [_multiindex_key(sol_prev.TB.multi_indices[sol_prev.active_modes[j]]) for j in 1:nmodes_prev]
+
+    ## determine pairs (j,k) of matching modes: sol_prev mode j -> sol mode k
+    pairs = Tuple{Int, Int}[]
+    if match_modes == :append
+        ncommon = min(nmodes, nmodes_prev)
+        if all(keys_new[j] == keys_prev[j] for j in 1:ncommon)
+            append!(pairs, [(j, j) for j in 1:ncommon])
+        else
+            @warn "mode lists do not coincide up to appended modes, falling back to multi-index matching"
+            empty!(pairs)
+        end
+    end
+    if isempty(pairs)
+        if match_modes in (:append, :multiindex)
+            prev_modes = Dict{Tuple, Int}()
+            for j in 1:nmodes_prev
+                prev_modes[keys_prev[j]] = j
+            end
+            for k in 1:nmodes
+                j = get(prev_modes, keys_new[k], 0)
+                j == 0 && continue
+                push!(pairs, (j, k))
+            end
+        else
+            error("unknown match_modes option $(match_modes)")
+        end
+    end
+
+    nmoved = 0
+    for (j, k) in pairs
+        for u in 1:nunknowns
+            tgt = sol[u, k]
+            src = sol_prev[u, j]
+            if tgt.FES.ndofs == src.FES.ndofs && tgt.FES.xgrid[Coordinates] == src.FES.xgrid[Coordinates]
+                copyto!(view(tgt), view(src))
+            else
+                lazy_interpolate!(tgt, [src])
+            end
+        end
+        nmoved += 1
+    end
+    return nmoved
+end

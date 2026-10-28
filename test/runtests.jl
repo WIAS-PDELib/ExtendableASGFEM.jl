@@ -207,6 +207,60 @@ function main()
         end
     end
 
+    @testset "initial guess from previous level" begin
+        # mimic an adaptive step: refine grid and append modes, transfer previous
+        # solution as initial guess; the solved system must be unaffected by the guess
+        problem = PoissonProblemPrimal
+        C = PoissonSimple.coefficient_for_problem(problem; decay = 2.0, mean = 1.0)
+        f! = (result, qpinfo) -> (result[1] = 1)
+
+        modes_coarse = [[0], [1, 0], [0, 1]]
+        modes_fine = [[0], [1, 0], [0, 1], [2, 0], [1, 1], [0, 0, 1]]
+
+        ## coarse level
+        basis1, mi1 = PoissonSimple.make_stochastic_basis(problem, modes_coarse)
+        grid1 = PoissonSimple.make_grid("square", 1)
+        FES1, unames1 = PoissonSimple.make_fem_spaces(problem, grid1, 1)
+        sol1 = SGFEVector(FES1, basis1; active_modes = 1:length(mi1), unames = unames1)
+        solve!(problem, sol1, C; rhs = f!, use_iterative_solver = true)
+
+        ## fine level on refined grid with appended modes
+        grid2 = PoissonSimple.make_grid("square", 2)
+        basis2, mi2 = PoissonSimple.make_stochastic_basis(problem, modes_fine)
+        FES2, unames2 = PoissonSimple.make_fem_spaces(problem, grid2, 1)
+        sol_guess = SGFEVector(FES2, basis2; active_modes = 1:length(mi2), unames = unames2)
+        sol_direct = SGFEVector(FES2, basis2; active_modes = 1:length(mi2), unames = unames2)
+
+        # all coarse modes transfer (zero-padding of multi-indices is ignored),
+        # modes without predecessor stay zero
+        @test interpolate_initial_guess!(sol_guess, sol1) == length(mi1)
+        @test norm(sol_guess[length(mi1) + 1]) == 0
+
+        # solving with guess must agree with the direct solve on the same system
+        solve!(problem, sol_guess, C; rhs = f!, use_iterative_solver = true)
+        solve!(problem, sol_direct, C; rhs = f!, use_iterative_solver = false)
+        @test norm(sol_guess.entries - sol_direct.entries) < 1.0e-8 * norm(sol_direct.entries)
+
+        ## stochastic-only refinement on the same grid: direct block copy
+        sol_copy = SGFEVector(FES1, basis2; active_modes = 1:length(mi2), unames = unames1)
+        @test interpolate_initial_guess!(sol_copy, sol1) == length(mi1)
+        ndofs = FES1.ndofs
+        for j in 1:length(mi1)
+            @test all(view(sol_copy.entries, (j - 1) * ndofs + 1:j * ndofs) .==
+                      view(sol1.entries, (j - 1) * ndofs + 1:j * ndofs))
+        end
+
+        ## reordered modes are matched by multi-index with match_modes = :multiindex
+        modes_reversed = [[0], [0, 1], [1, 0]]
+        basis3, mi3 = PoissonSimple.make_stochastic_basis(problem, modes_reversed)
+        sol_reversed = SGFEVector(FES1, basis3; active_modes = 1:length(mi3), unames = unames1)
+        @test interpolate_initial_guess!(sol_reversed, sol1; match_modes = :multiindex) == length(mi1)
+        @test all(view(sol_reversed.entries, ndofs + 1:2 * ndofs) .==
+                  view(sol1.entries, 2 * ndofs + 1:3 * ndofs)) # [0,1] matched to [0,1]
+        @test all(view(sol_reversed.entries, 2 * ndofs + 1:3 * ndofs) .==
+                  view(sol1.entries, ndofs + 1:2 * ndofs)) # [1,0] matched to [1,0]
+    end
+
     @testset "residual-based estimator smoke test" begin
         # small P2 solve, then run the primal residual estimator including the
         # tail-extension and jump assembly paths

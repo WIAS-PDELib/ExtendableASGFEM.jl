@@ -150,6 +150,17 @@ Base.eltype(::MySystemLogPrimal{Tv}) where {Tv} = Tv
 Base.size(S::MySystemLogPrimal, d::Int) = S.nmodes * size(S.A.entries, 1)
 
 
+"""
+    solve_logpoisson_primal!(SolutionSGFEM::SGFEVector, A, N0, Nm, b0, G, nmodes; atol, rtol)
+
+Solve the log-transformed primal SG Poisson system iteratively using matrix-free
+preconditioned GMRES.
+
+Nonzero entries of ``SolutionSGFEM`` are interpreted as initial guess (e.g. obtained
+from `interpolate_initial_guess!` on a coarser level) and eliminated from the system by
+solving for the correction: GMRES starts from zero on ``Ax = b - A\\,u_0`` and returns
+``u = u_0 + x``. Boundary dofs of the guess are zeroed before use.
+"""
 function solve_logpoisson_primal!(SolutionSGFEM::SGFEVector, A, N0, Nm, b0, G, nmodes; atol = 1.0e-14, rtol = 1.0e-14)
 
     ## create fullmatrix-free matrix evaluator
@@ -170,11 +181,27 @@ function solve_logpoisson_primal!(SolutionSGFEM::SGFEVector, A, N0, Nm, b0, G, n
 
     ## right-hand side
     b = deepcopy(SolutionSGFEM)
+    fill!(b.entries, 0)
     for m in 1:nmodes
         addblock!(b[m], b0[m][1])
         for dof in bdofs
             b[m][dof] = 0
         end
+    end
+
+    ## initial guess: solve for the correction A*x = b - A*u0, see solve_primal!
+    u0 = copy(SolutionSGFEM.entries)
+    has_guess = any(!=(0), u0)
+    if has_guess
+        for m in 1:nmodes
+            off = SolutionSGFEM.length4modes[m]
+            for dof in bdofs
+                u0[off + dof] = 0
+            end
+        end
+        Au0 = zero(b.entries)
+        mul!(Au0, S, u0)
+        b.entries .-= Au0
     end
 
     ## solve via LinearSolve's higher-level API while keeping the matrix-free operator
@@ -197,7 +224,13 @@ function solve_logpoisson_primal!(SolutionSGFEM::SGFEVector, A, N0, Nm, b0, G, n
         Pr = P,
         verbose = false,
     )
-    SolutionSGFEM.entries .= sol.u
+    if has_guess
+        SolutionSGFEM.entries .= sol.u .+ u0
+        ## restore original right-hand side for residual check below
+        b.entries .+= Au0
+    else
+        SolutionSGFEM.entries .= sol.u
+    end
     @show sol.stats
 
     ## check residual

@@ -13,7 +13,7 @@ using ExtendableFEMBase: ExtendableFEMBase, BFaceDofs, CellDofs, Divergence,
     FEVectorBlock, Gradient, H1P1, H1Pk, HDIVRTk,
     Laplacian, QuadratureRule, _addnz, addblock!,
     addblock_matmul!, eval_febe!, fill!, get_ndofs,
-    get_polynomialorder, unicode_scalarplot,
+    get_polynomialorder, lazy_interpolate!, unicode_scalarplot,
     update_basis!
 using ExtendableGrids: ExtendableGrids, Adjacency, BFaceFaces, CellFaces,
     CellNodes, CellVolumes, Coordinates, ExtendableGrid,
@@ -68,6 +68,7 @@ export sample_distribution
 include("sgfevector.jl")
 export SGFEVector
 export set_sample!
+export interpolate_initial_guess!
 
 include("coefficients/coefficients.jl")
 export AbstractStochasticCoefficient
