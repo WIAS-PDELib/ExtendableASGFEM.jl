@@ -31,7 +31,7 @@ function main()
     end
 
     T = Double64
-    tol = 1e-15
+    tol = 1.0e-15
 
     @testset "norm_basis" begin
         # Hermite: ||H_k|| = sqrt(k!)
@@ -44,9 +44,9 @@ function main()
 
         # Legendre: ||P_k|| = sqrt(1/(2k+1))
         @test norm_basis(LegendrePolynomials, 0) ≈ 1.0
-        @test norm_basis(LegendrePolynomials, 1) ≈ sqrt(1/3)
-        @test norm_basis(LegendrePolynomials, 2) ≈ sqrt(1/5)
-        @test norm_basis(LegendrePolynomials, 3) ≈ sqrt(1/7)
+        @test norm_basis(LegendrePolynomials, 1) ≈ sqrt(1 / 3)
+        @test norm_basis(LegendrePolynomials, 2) ≈ sqrt(1 / 5)
+        @test norm_basis(LegendrePolynomials, 3) ≈ sqrt(1 / 7)
     end
 
     @testset "evaluate recurrence -- Hermite" begin
@@ -56,12 +56,14 @@ function main()
         n = 5
         vals = evaluate(HermitePolynomials, n, x)
 
-        exact = [T(1),
-                 x,
-                 x^2 - T(1),
-                 x^3 - 3x,
-                 x^4 - 6x^2 + T(3),
-                 x^5 - 10x^3 + 15x]
+        exact = [
+            T(1),
+            x,
+            x^2 - T(1),
+            x^3 - 3x,
+            x^4 - 6x^2 + T(3),
+            x^5 - 10x^3 + 15x,
+        ]
         @test all(abs.(vals .- exact) .< tol)
 
         # H_n(0): odd → 0, even → (-1)^{k/2}*(k-1)!!
@@ -82,12 +84,14 @@ function main()
         n = 5
         vals = evaluate(LegendrePolynomials, n, x)
 
-        exact = [T(1),
-                 x,
-                 (3x^2 - T(1)) / T(2),
-                 (5x^3 - 3x) / T(2),
-                 (35x^4 - 30x^2 + T(3)) / T(8),
-                 (63x^5 - 70x^3 + 15x) / T(8)]
+        exact = [
+            T(1),
+            x,
+            (3x^2 - T(1)) / T(2),
+            (5x^3 - 3x) / T(2),
+            (35x^4 - 30x^2 + T(3)) / T(8),
+            (63x^5 - 70x^3 + 15x) / T(8),
+        ]
         @test all(abs.(vals .- exact) .< tol)
 
         # Orthogonality: P_n(0) for even/odd
@@ -122,16 +126,16 @@ function main()
         @test length(nodes) == 6
         @test length(weights) == 6
         @test all(>(zero(T)), weights)
-        @test abs(sum(weights) - 1.0) < 1e-10  # integral of w=1/2 on [-1,1] is 2
-        @test sum(nodes) ≈ zero(T) atol = 1e-10  # symmetric about 0
+        @test abs(sum(weights) - 1.0) < 1.0e-10  # integral of w=1/2 on [-1,1] is 2
+        @test sum(nodes) ≈ zero(T) atol = 1.0e-10  # symmetric about 0
 
         # Gauss-Hermre with 6 nodes, weights sum to sqrt(pi) for standard Gauss-Hermite.
         # For normal weight it should sum to 1.
         gr_h = gauss_rule(HermitePolynomials, 6; T = T)
         wh, weightsh = gr_h
         @test length(wh) == 6
-        @test abs(sum(weightsh) - 1.0) < 1e-10  # probability measure sums to 1
-        @test sum(wh) ≈ zero(T) atol = 1e-10  # centred about 0
+        @test abs(sum(weightsh) - 1.0) < 1.0e-10  # probability measure sums to 1
+        @test sum(wh) ≈ zero(T) atol = 1.0e-10  # centred about 0
     end
 
     @testset "evaluate against gauss quadrature" begin
@@ -141,16 +145,16 @@ function main()
             nodes, weights = gr
 
             for n in 0:maxn
-                pn = evaluate(basis, maxn, nodes)[:, n+1]  # column n+1 (Julia 1-based)
+                pn = evaluate(basis, maxn, nodes)[:, n + 1]  # column n+1 (Julia 1-based)
                 quad_norm2 = sum(pn .^ 2 .* weights)
                 expected2 = norm_basis(basis, n)^2
                 @test abs(quad_norm2 - expected2) < tol * maxn
             end
 
             # Orthogonality check: integral of p_n * p_m for n ≠ m should be 0
-            for n in 0:(maxn-1), m in (n+1):maxn
-                pn = evaluate(basis, maxn, nodes)[:, n+1]
-                pm = evaluate(basis, maxn, nodes)[:, m+1]
+            for n in 0:(maxn - 1), m in (n + 1):maxn
+                pn = evaluate(basis, maxn, nodes)[:, n + 1]
+                pm = evaluate(basis, maxn, nodes)[:, m + 1]
                 integrand = sum(pn .* pm .* weights)
                 @test abs(integrand) < tol
             end
@@ -176,7 +180,7 @@ function main()
         )
         prob = LinearProblem(op, b)
         sol = solve(prob; alg = KrylovJL_GMRES(), verbose = false)
-        @test norm(sol.u - (A \ b)) < 1e-10
+        @test norm(sol.u - (A \ b)) < 1.0e-10
     end
 
     @testset "iterative vs. full solver consistency" begin
@@ -246,8 +250,10 @@ function main()
         @test interpolate_initial_guess!(sol_copy, sol1) == length(mi1)
         ndofs = FES1.ndofs
         for j in 1:length(mi1)
-            @test all(view(sol_copy.entries, (j - 1) * ndofs + 1:j * ndofs) .==
-                      view(sol1.entries, (j - 1) * ndofs + 1:j * ndofs))
+            @test all(
+                view(sol_copy.entries, ((j - 1) * ndofs + 1):(j * ndofs)) .==
+                    view(sol1.entries, ((j - 1) * ndofs + 1):(j * ndofs))
+            )
         end
 
         ## reordered modes are matched by multi-index with match_modes = :multiindex
@@ -255,10 +261,14 @@ function main()
         basis3, mi3 = PoissonSimple.make_stochastic_basis(problem, modes_reversed)
         sol_reversed = SGFEVector(FES1, basis3; active_modes = 1:length(mi3), unames = unames1)
         @test interpolate_initial_guess!(sol_reversed, sol1; match_modes = :multiindex) == length(mi1)
-        @test all(view(sol_reversed.entries, ndofs + 1:2 * ndofs) .==
-                  view(sol1.entries, 2 * ndofs + 1:3 * ndofs)) # [0,1] matched to [0,1]
-        @test all(view(sol_reversed.entries, 2 * ndofs + 1:3 * ndofs) .==
-                  view(sol1.entries, ndofs + 1:2 * ndofs)) # [1,0] matched to [1,0]
+        @test all(
+            view(sol_reversed.entries, (ndofs + 1):(2 * ndofs)) .==
+                view(sol1.entries, (2 * ndofs + 1):(3 * ndofs))
+        ) # [0,1] matched to [0,1]
+        @test all(
+            view(sol_reversed.entries, (2 * ndofs + 1):(3 * ndofs)) .==
+                view(sol1.entries, (ndofs + 1):(2 * ndofs))
+        ) # [1,0] matched to [1,0]
     end
 
     @testset "residual-based estimator smoke test" begin
