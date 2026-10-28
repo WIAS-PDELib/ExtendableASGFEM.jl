@@ -212,8 +212,16 @@ Solve the primal SG Poisson system iteratively using matrix-free preconditioned 
 Builds a `MySystemPrimal` operator and a `MyPreconditionerPrimal` from
 the mean matrix ``A_0``, KL perturbation blocks ``A_m``, coupling tensor ``G``, and
 boundary info extracted from the ``SGFEVector``. The right-hand side is assembled by
-copying the solution vector, adding the deterministic force block ``b_0`` to mode 1,
-and zeroing boundary entries on all modes.
+zeroing a copy of the solution vector, adding the deterministic force block ``b_0``
+to mode 1, and zeroing boundary entries on all modes.
+
+Nonzero entries of ``SolutionSGFEM`` are interpreted as initial guess (e.g. obtained
+from `interpolate_initial_guess!` on a coarser level) and eliminated from the system by
+solving for the correction: GMRES starts from zero on ``Ax = b - A\\,u_0`` and returns
+``u = u_0 + x``. Boundary dofs of the guess are zeroed before use. When a guess is used,
+the tolerances are interpreted with respect to the full right-hand side
+(``\\|b - Au\\| \\le atol + rtol*\\|b\\|``), as for a cold start; Krylov's default relative
+to the guess's initial residual would nullify the benefit of the guess.
 
 Krylov.jl's ``Krylov.gmres`` is used as the solver. Default tolerances are 1e-14.
 
@@ -249,11 +257,39 @@ function solve_primal!(SolutionSGFEM::SGFEVector, A0, Am, b0, G, nmodes; atol = 
 
     ## right-hand side
     b = deepcopy(SolutionSGFEM)
+    fill!(b.entries, 0)
     addblock!(b[1], b0[1])
     for m in 1:nmodes
         for dof in bdofs
             b[m][dof] = 0
         end
+    end
+
+    ## initial guess: nonzero entries of SolutionSGFEM (e.g. interpolated from previous
+    ## AFEM level via interpolate_initial_guess!) are used as starting value; since the
+    ## KrylovJL wrapper in LinearSolve always starts from zero, we solve for the
+    ## correction instead: A(u0 + x) = b  <=>  Ax = b - Au0
+    u0 = copy(SolutionSGFEM.entries)
+    has_guess = any(!=(0), u0)
+    if has_guess
+        for m in 1:nmodes
+            off = SolutionSGFEM.length4modes[m]
+            for dof in bdofs
+                u0[off + dof] = 0
+            end
+        end
+        # keep the cold-start stopping criterion: reduce the initial residual of the
+        # correction system by an absolute target atol + rtol*||b|| instead of the
+        # Krylov default (relative to the already reduced warm residual), which would
+        # nullify the benefit of the guess
+        atol_eff = atol + rtol * norm(b.entries)
+        rtol_eff = 0.0
+        Au0 = zero(b.entries)
+        mul!(Au0, S, u0)
+        b.entries .-= Au0
+    else
+        atol_eff = atol
+        rtol_eff = rtol
     end
 
     ## solve via LinearSolve's higher-level API while keeping the matrix-free operator
@@ -268,15 +304,22 @@ function solve_primal!(SolutionSGFEM::SGFEVector, A0, Am, b0, G, nmodes; atol = 
         ifcache = false,
     )
     prob = LinearProblem(Aop, b.entries)
-    sol = solve(prob;
+    sol = solve(
+        prob;
         alg = KrylovJL_GMRES(),
-        abstol = atol,
-        reltol = rtol,
+        abstol = atol_eff,
+        reltol = rtol_eff,
         Pl = P,
         Pr = P,
         verbose = false,
     )
-    SolutionSGFEM.entries .= sol.u
+    if has_guess
+        SolutionSGFEM.entries .= sol.u .+ u0
+        ## restore original right-hand side for residual check below
+        b.entries .+= Au0
+    else
+        SolutionSGFEM.entries .= sol.u
+    end
     @show sol.stats
 
     ## check residual

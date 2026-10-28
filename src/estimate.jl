@@ -1,7 +1,7 @@
 function get_neighbours(OBT, multi_indices)
     M = length(multi_indices[1])
     nmodes = length(multi_indices)
-    idx4mode = Dict{NTuple{M,Int},Int}()
+    idx4mode = Dict{NTuple{M, Int}, Int}()
     for k in 1:nmodes
         idx4mode[(multi_indices[k]...,)] = k
     end
@@ -91,8 +91,10 @@ function prepare_extended_modes(sol::SGFEVector; tail_extension = [10, 2])
     ## destructured return values (a bare return of the cache entry would type the callers'
     ## G, mneighbours..., etc. as Any and break the type stability of the estimator loops).
     cacheval = _extended_modes_cache[cachekey]
-    return (cacheval[1]::Vector{Vector{Int}}, cacheval[2]::TensorizedBasis{Float64}, cacheval[3]::ExtendableSparseMatrix{Float64, Int64},
-            cacheval[4]::Matrix{Int}, cacheval[5]::Matrix{Int}, cacheval[6]::Int, cacheval[7]::Int)
+    return (
+        cacheval[1]::Vector{Vector{Int}}, cacheval[2]::TensorizedBasis{Float64}, cacheval[3]::ExtendableSparseMatrix{Float64, Int64},
+        cacheval[4]::Matrix{Int}, cacheval[5]::Matrix{Int}, cacheval[6]::Int, cacheval[7]::Int,
+    )
 end
 
 """
@@ -183,7 +185,7 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
         FEBasis_id = FEEvaluator(FES_interp, ExtendableFEMBase.Identity, qf)
         expaf_interpolations = FEVector([FES_interp for j in 1:nmodes_extended])
         for j in 1:nmodes_extended
-            interpolate!(expaf_interpolations[j], (result, qpinfo) -> lambda_μ!(result, qpinfo.x, j); quadorder = 2*quadorder)
+            interpolate!(expaf_interpolations[j], (result, qpinfo) -> lambda_μ!(result, qpinfo.x, j); quadorder = 2 * quadorder)
         end
         length(_lambda_interp_cache) >= _lambda_interp_cache_maxlen && empty!(_lambda_interp_cache)
         _lambda_interp_cache[interpkey] = (FEBasis_id, expaf_interpolations, FES_interp[CellDofs], FES_interp.ndofs, get_ndofs(ON_CELLS, H1Pk{1, 2, quadorder}, EG))
@@ -256,7 +258,7 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
                     kmL2 += am[1]^2
                 end
                 rhs(ftemp, x)
-                ζ_data1 += ftemp[1]^2 * exp(2*kmL2) * weights[qp] * cellvolumes[cell]
+                ζ_data1 += ftemp[1]^2 * exp(2 * kmL2) * weights[qp] * cellvolumes[cell]
                 fval = ftemp[1]
 
                 ## h_T|| f_nu + \sigma_\nu ||
@@ -332,7 +334,7 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
         eta4modes[j] = sqrt(eta4modes[j]^2 + sum(view(jumps4face, :)))
     end
 
-    ζ_data = ζ_data1-ζ_data2
+    ζ_data = ζ_data1 - ζ_data2
     if ζ_data < 0
         @warn "negative data truncation error estimate = $(ζ_data) (ζ_data1 = $(ζ_data1), ζ_data2 = $(ζ_data2))
             This is likely due to insufficient quadrature order for the interpolation of <e^-a, H_nu>."
@@ -340,7 +342,7 @@ function estimate(::Type{LogTransformedPoissonProblemPrimal}, sol::SGFEVector, C
         @info "estimated data truncation error = $(ζ_data) (ζ_data1 = $(ζ_data1), ζ_data2 = $(ζ_data2))"
     end
 
-    return eta4modes, eta4cell, multi_indices_extended, ζ_data1-ζ_data2 #, f4modes
+    return eta4modes, eta4cell, multi_indices_extended, ζ_data1 - ζ_data2 #, f4modes
 end
 
 

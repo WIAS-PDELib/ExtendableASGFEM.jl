@@ -44,3 +44,16 @@ Modules = [ExtendableASGFEM]
 Pages = ["modelproblems/solvers_logpoisson_primal.jl", "modelproblems/solvers_logpoisson_dual.jl"]
 Order   = [:type, :function]
 ```
+
+## Initial Guess for Adaptive Loops
+
+In an adaptive refinement loop, the iterative solvers above can start from the solution
+of the previous level instead of zero. `interpolate_initial_guess!` transfers the spatial
+coefficient blocks of the previously active stochastic modes: they are copied directly if
+the grid is unchanged, and pointwise interpolated (`lazy_interpolate!`) onto the dof points
+of the new grid after spatial refinement. The transferred vector is passed to the solver as
+part of the solution vector; the solver eliminates the guess and lets GMRES solve for the
+correction (see [Iterative Solution of the Primal Poisson Problem](solvers_poisson_primal.md)).
+The stopping criterion stays the cold-start one, $\|b - \mathbf{A}u\| \le \mathrm{atol} + \mathrm{rtol}\,\|b\|$,
+so that iteration counts benefit from a good guess while accuracy does not depend on it.
+This is used in the AFEM loop of `scripts/poisson.jl` (see [Poisson Script](poisson_script.md)).
