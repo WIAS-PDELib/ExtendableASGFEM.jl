@@ -463,7 +463,7 @@ function estimate(::Type{PoissonProblemPrimal}, sol::SGFEVector, C::AbstractStoc
             ## boundary modes enjoy no Galerkin orthogonality and therefore have no additional h power
             for j in 1:nmodes_extended
                 if j <= nmodes
-                    eta4cell[cell, j] *= cellvolumes[cell]^3
+                    eta4cell[cell, j] *= cellvolumes[cell]^2
                 else
                     eta4cell[cell, j] *= cellvolumes[cell]
                 end

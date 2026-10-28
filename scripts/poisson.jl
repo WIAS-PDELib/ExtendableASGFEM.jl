@@ -445,12 +445,15 @@ function produce_plots(;
         force = false,
         scaling_factor = true,
         markersize = 10,
-        plotM = 80,
+        plotM = nothing, # if nothing, auto from data + extra_dims
+        extra_dims = 5, # extra stochastic dimensions shown as zero in bar plot
         maxdegree = 12,
         template = :convergence, # :custom = specify your own cols
         cols = [:estimate, :exact_error_stress],
         xlabel = "ndofs",
         show_optimal_rate = false,
+        fontsize = 28,
+        bar_fontsize = 16,
         kwargs...
     )
 
@@ -520,7 +523,7 @@ function produce_plots(;
             end
         end
         title = ""
-        f_conv = Figure(fontsize = 18, size = (900, 600))
+        f_conv = Figure(fontsize = fontsize, size = (900, 600))
         if xscale !== nothing
             ax_conv = Axis(
                 f_conv[1, 1], title = title, xlabel = xlabel, ylabel = ylabel, yscale = yscale, xscale = xscale,
@@ -599,7 +602,7 @@ function produce_plots(;
                 scatterlines!(ndofs, ndofs .^ (-order[o] / 2), label = label, color = :gray, markersize = 0, linewidth = 2, linestyle = linestyles[length(cols) + 1])
             end
         end
-        axislegend(ax_conv, position = legend_position, merge = true, labelsize = 16, orientation = :horizontal, nbanks = length(order) * length(cols) + 1)
+        axislegend(ax_conv, position = legend_position, merge = true, labelsize = fontsize - 2, orientation = :horizontal, nbanks = length(order) * length(cols) + 1)
 
         basedata["order"] = order
         basedata["decay"] = decay[d]
@@ -609,6 +612,17 @@ function produce_plots(;
     end
 
     ## bar plot
+    if plotM === nothing
+        ## determine max stochastic dimension with nonzero degree in data, plus extra_dims zero bars
+        Mdata = 0
+        for dat in data
+            mi = dat["multi_indices"]
+            M = maximum(length.(mi))
+            kmax = findlast(k -> any(mi[j][k] > 0 for j in 1:length(mi)), 1:M)
+            Mdata = max(Mdata, kmax === nothing ? 0 : kmax)
+        end
+        plotM = Mdata + extra_dims
+    end
     for o in 1:length(order)
         max4mode = zeros(length(decay), plotM)
         cat = zeros(Int, plotM * length(decay))
@@ -631,9 +645,10 @@ function produce_plots(;
             #  maxdegree = maximum(max4mode[:])
         end
         yticks = (1:maxdegree, ["$(Int(j))" for j in 1:maxdegree])
-        xticks = (1:plotM, [j % 2 == 1 ? "$(Int(j))" : "" for j in 1:plotM])
-        f_bar = Figure(fontsize = 12, size = (900, 250))
-        Axis(f_bar[1, 1], limits = (0, plotM, 0, maxdegree), yticks = yticks, xticks = xticks, xlabel = "stochastic dimension", ylabel = "max degree", xticklabelrotation = pi / 2)
+        labelstep = max(1, ceil(Int, bar_fontsize * plotM / 700)) # show all x tick labels if there is enough horizontal space
+        xticks = (1:plotM, [(j - 1) % labelstep == 0 ? "$(Int(j))" : "" for j in 1:plotM])
+        f_bar = Figure(fontsize = bar_fontsize, size = (900, 250 + 5 * max(0, bar_fontsize - 12)))
+        Axis(f_bar[1, 1], limits = (0, plotM, 0, maxdegree), yticks = yticks, xticks = xticks, xlabel = "stochastic dimension", ylabel = "max degree", xticklabelrotation = pi / 2, xlabelsize = fontsize, ylabelsize = fontsize)
         CairoMakie.barplot!(
             cat, height,
             dodge = AbstractVector{Integer}(groups),
