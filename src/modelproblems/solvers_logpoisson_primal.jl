@@ -159,7 +159,9 @@ preconditioned GMRES.
 Nonzero entries of ``SolutionSGFEM`` are interpreted as initial guess (e.g. obtained
 from `interpolate_initial_guess!` on a coarser level) and eliminated from the system by
 solving for the correction: GMRES starts from zero on ``Ax = b - A\\,u_0`` and returns
-``u = u_0 + x``. Boundary dofs of the guess are zeroed before use.
+``u = u_0 + x``. Boundary dofs of the guess are zeroed before use. When a guess is used,
+the tolerances are interpreted with respect to the full right-hand side
+(``\\|b - Au\\| \\le atol + rtol*\\|b\\|``), as for a cold start.
 """
 function solve_logpoisson_primal!(SolutionSGFEM::SGFEVector, A, N0, Nm, b0, G, nmodes; atol = 1.0e-14, rtol = 1.0e-14)
 
@@ -199,9 +201,15 @@ function solve_logpoisson_primal!(SolutionSGFEM::SGFEVector, A, N0, Nm, b0, G, n
                 u0[off + dof] = 0
             end
         end
+        # keep the cold-start stopping criterion, see solve_primal!
+        atol_eff = atol + rtol * norm(b.entries)
+        rtol_eff = 0.0
         Au0 = zero(b.entries)
         mul!(Au0, S, u0)
         b.entries .-= Au0
+    else
+        atol_eff = atol
+        rtol_eff = rtol
     end
 
     ## solve via LinearSolve's higher-level API while keeping the matrix-free operator
@@ -216,10 +224,11 @@ function solve_logpoisson_primal!(SolutionSGFEM::SGFEVector, A, N0, Nm, b0, G, n
         ifcache = false,
     )
     prob = LinearProblem(Aop, b.entries)
-    sol = solve(prob;
+    sol = solve(
+        prob;
         alg = KrylovJL_GMRES(),
-        abstol = atol,
-        reltol = rtol,
+        abstol = atol_eff,
+        reltol = rtol_eff,
         Pl = P,
         Pr = P,
         verbose = false,
