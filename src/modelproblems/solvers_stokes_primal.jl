@@ -196,9 +196,10 @@ function solve_stokes_primal!(
         residual[a * (m - 1) .+ bdofs] .= 0
         residual[a * nmodes + b * (m - 1) + 1] = 0
     end
-    @info "linear residual = $(sqrt(sum(residual .^ 2)))"
+    totalResidual = sqrt(sum(residual .^ 2))
+    @info "linear residual = $totalResidual"
 
-    return nothing
+    return totalResidual
 end
 
 function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, Am, B, b0, G, nmodes, bdofs)
@@ -267,7 +268,8 @@ function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, Am, B, b0, G, 
         residual[a * (m - 1) .+ bdofs] .= 0
         residual[a * nmodes + b * (m - 1) + 1] = 0
     end
-    @info "linear residual = $(sqrt(sum(residual .^ 2)))"
+    totalResidual = sqrt(sum(residual .^ 2))
+    @info "linear residual = $totalResidual"
 
-    return nothing
+    return totalResidual
 end

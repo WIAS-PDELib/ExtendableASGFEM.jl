@@ -688,7 +688,7 @@ function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStoch
                             fill!(res, 0)
                         end
                         for (m, k, g) in neighbours4mode[j]
-                            res .+= amvals[m + 1] * g * view(lap4mode, :, k, qp) 
+                            res .+= amvals[m + 1] * g * view(lap4mode, :, k, qp)
                         end
                         eta4cell_2[cell, j] += (res[1]^2 + res[2]^2) * weights[qp]
                     end
@@ -727,7 +727,7 @@ function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStoch
     ## New compute tangential jumps of grad u_h?
     FES = sol.FES_space
     sol_j = FEVector(FES)
-    
+
     cellfaces = xgrid[CellFaces]
     jumps4face = zeros(Float64, 1, size(xgrid[FaceNodes], 2))
     jumps4face_laplace = zeros(Float64, 1, size(xgrid[FaceNodes], 2))
@@ -799,7 +799,7 @@ function estimate(::Type{StokesProblemPrimal}, sol::SGFEVector, C::AbstractStoch
         for cell in 1:ncells
             for f in 1:3
                 eta4cell[cell, j] += jumps4face[cellfaces[f, cell]]
-                if !reconstruct
+                if reconstruct
                     eta4cell[cell, j] += jumps4face_laplace[cellfaces[f, cell]]
                 end
             end

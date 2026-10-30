@@ -130,9 +130,9 @@ function prepare_stochastic_data_structures(rc::RunConfiguration)
 end
 
 function create_plot(
-        xdata, ydata; xscale = identity, yscale = identity, xlabel::LaTeXStrings.LaTeXString,
-        ylabel::LaTeXStrings.LaTeXString, title::LaTeXStrings.LaTeXString, position = :rt,
-        plot_path::String, labels::Vector{LaTeXStrings.LaTeXString}, show_optimal_rate = false,
+        xdata, ydata; xscale = identity, yscale = identity, xlabel, ylabel,
+        title, position = :rt, plot_path, labels::Vector{LaTeXStrings.LaTeXString},
+        show_optimal_rate = false, reference_lines_scaling = [1.0, 1.0, 1.0, 1.0]
     )
     colors = Makie.wong_colors()
     p = Makie.Figure(fontsize = 18, size = (900, 600))
@@ -149,11 +149,15 @@ function create_plot(
         )
     end
     if show_optimal_rate
-        linestyles = [:dot, :dashdot, :dashdotdot]
-        for i in 1:3
+        linestyles = [:solid, :dot, :dashdot, :dashdotdot]
+        for (i, linestyle) in enumerate(linestyles)
+            if i > length(reference_lines_scaling)
+                break
+            end
             scatterlines!(
-                xdata, xdata .^ (-i / 2), label = L"\mathcal{O}(h^{%$(-i)})", color = :gray,
-                markersize = 0, linewidth = 2, linestyle = linestyles[i],
+                xdata, reference_lines_scaling[i] * xdata .^ (-i / 2), color = :gray,
+                label = L"\mathcal{O}(h^{%$(-round(i/2, sigdigits=2))})", markersize = 0,
+                linewidth = 2, linestyle = linestyle,
             )
         end
     end
@@ -253,7 +257,20 @@ function runner_plot_modes_for_solution(rc::RunConfiguration; kwargs...)
         bonus_quadorder_f = 10, use_iterative_solver = true, reconstruct = reconstruct,
     )
 
-    display(plot_modes(SolutionSGFEM; Plotter = PythonPlot, ncols = 4, normalizePattern = ["p"]))
+    p = plot_modes(SolutionSGFEM; Plotter = PythonPlot, ncols = 4, normalizePattern = ["p"])
+    # Adjust subplot titles
+    M = length(multi_indices)
+    K = floor(Int, M / 2)
+    for i in 1:M
+        varname = i <= K ? "u" : "p"
+        j = 2 * (i - 1) % M
+        customplot!(p[i, 1]) do ax
+            ax.set_title("$(varname)[$j]")
+        end
+        customplot!(p[i, 2]) do ax
+            ax.set_title("$(varname)[$(j + 1)]")
+        end
+    end
 
     return SolutionSGFEM
 end
@@ -324,7 +341,7 @@ function runner_non_pressure_robustness_error(rc::RunConfiguration; kwargs...)
     multi_indices, TensorBasis = prepare_stochastic_data_structures(rc)
     ν = [1.0, 0.2]
 
-    FETypes, unames = (H1BR{2}, L2P0{1}), ["u", "p"]
+    FETypes, unames = (H1P2{2, 2}, H1P1{1}), ["u", "p"]
     FES = [FESpace{FETypes[1]}(xgrid), FESpace{FETypes[2]}(xgrid)]
 
     SolutionSGFEM, metrics = nothing, nothing
@@ -381,6 +398,7 @@ function runner_convergence_plot(rc::RunConfiguration; kwargs...)
     reconstruct = get(kwargs, :reconstruct, false)
     FETypes = get(kwargs, :FETypes, (H1P2{2, 2}, H1P1{1}))
     nrefs_max = get(kwargs, :nrefs_max, 5)
+    reference_lines_scaling = get(kwargs, :reference_lines_scaling, [1.0, 1.0, 1.0, 1.0])
 
     SCType = rc.stochastic_configuration.SCType
     C = SCType(ν)
@@ -406,7 +424,7 @@ function runner_convergence_plot(rc::RunConfiguration; kwargs...)
         )
 
         l2stress_error, l2u_error, l2p_error = calculate_sampling_error_2(
-            SolutionSGFEM, exact_f!, C; problem = StokesProblemPrimal, nsamples = 5, order = 2,
+            SolutionSGFEM, exact_f!, C; problem = StokesProblemPrimal, nsamples = 25, order = 2,
             metrics_configuration = stokes_metrics_configuration, dimensionwise_error = true,
         )
 
@@ -417,10 +435,11 @@ function runner_convergence_plot(rc::RunConfiguration; kwargs...)
     if haskey(kwargs, :plot_path)
         create_plot(
             ndofs, error; xscale = log10, yscale = log10, xlabel = L"\text{number of degrees of freedom}",
-            ylabel = L"error measured in $L^2$-norm", plot_path = kwargs[:plot_path], position = :rt,
+            ylabel = "", plot_path = kwargs[:plot_path], show_optimal_rate = true, position = :rt,
             title = reconstruct ? L"\text{Convergence plot for the complex example with reconstruction operator}"
                 : L"\text{Convergence plot for the complex example without reconstruction operator}",
-            labels = [L"\|∇(u - u_h)\|_{L^2}", L"\|u - u_h\|_{L^2}", L"\|p - p_h\|_{L^2}"], show_optimal_rate = true,
+            labels = [L"\|∇(u - u_h)\|_{L^2}", L"\|u - u_h\|_{L^2}", L"\|p - p_h\|_{L^2}"],
+            reference_lines_scaling,
         )
     end
 
@@ -491,11 +510,13 @@ run_configuration_convergence_plot_complex_example = RunConfiguration(
     runner_convergence_plot,
     [
         Dict(
-            :α => 10.0^(-4), :FETypes => (H1BR{2}, L2P0{1}), :reconstruct => false,
+            :α => 10.0^(-4), :FETypes => (H1BR{2}, L2P0{1}),
+            :reconstruct => false, :reference_lines_scaling => [1.0, 4 * 10.0^3],
             :plot_path => "plots/convergence_plot_for_complex_example_non_pressure_robust.svg"
         ),
         Dict(
-            :α => 10.0^(-4), :FETypes => (H1BR{2}, L2P0{1}), :reconstruct => true,
+            :α => 10.0^(-4), :FETypes => (H1BR{2}, L2P0{1}),
+            :reconstruct => true, :reference_lines_scaling => [1.0, 9 * 10.0^3, 7 * 10.0^3, 5 * 10^4],
             :plot_path => "plots/convergence_plot_for_complex_example_pressure_robust.svg"
         ),
     ]
@@ -511,10 +532,10 @@ run_configurations = [
 ]
 
 ## Helper methods for executing numerical examples, which are represented as RunConfiguration structs
-function execute_runner(rc::RunConfiguration)
+function execute_runner(rc::RunConfiguration; kwargs...)
     return isempty(rc.kwargs_list) ?
-        rc.runner(rc) :
-        map(kwargs -> rc.runner(rc; kwargs...), rc.kwargs_list)
+        rc.runner(rc, kwargs...) :
+        map(runner_kwargs -> rc.runner(rc; runner_kwargs..., kwargs...), rc.kwargs_list)
 end
 
 function execute_all()

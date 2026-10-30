@@ -129,11 +129,11 @@ function solve!(
     nmodes = num_multiindices(TB)
 
     ## solve
-    @time (
+    totalResidual = @time (
         use_iterative_solver
             ? solve_stokes_primal!
             : solve_stokes_primal_full!
     )(sol, A[1], A[2:end], B, b0, G, nmodes, bdofs)
 
-    return bdofs
+    return totalResidual
 end

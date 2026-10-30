@@ -241,13 +241,14 @@ function _main(
         estimate_tail = zeros(Float64, 0),
         time_solve = zeros(Float64, 0),
         time_estimate = zeros(Float64, 0),
+        residual = zeros(Float64, 0),
     )
 
     sol = nothing
     lvl = 0
 
     while true
-        push!(df, [0 0 0 0 0 0 0 0 0 0 0 0 0])
+        push!(df, [0 0 0 0 0 0 0 0 0 0 0 0 0 0])
 
         lvl += 1
         @info "LEVEL $lvl"
@@ -271,7 +272,7 @@ function _main(
         f!, f_curl!, boundary_data!, ∇p! = prepare_data_for_complex_example(; ν = mean)
 
         sol = SGFEVector(FES, TensorBasis; active_modes = 1:length(multi_indices), unames = unames)
-        time_solve = @elapsed bdofs = solve!(
+        time_solve = @elapsed totalResidual = solve!(
             problem, sol, (result, qpinfo) -> (f!(result, qpinfo.x)), C;
             (exact_boundary!) = (result, qpinfo) -> (boundary_data!(result, qpinfo.x)), bonus_quadorder_a = bonus_quadorder_a, bonus_quadorder_f = bonus_quadorder_f, use_iterative_solver = use_iterative_solver, reconstruct = reconstruct
         )
@@ -350,6 +351,7 @@ function _main(
         df[lvl, :estimate] = sqrt(sum(η4modes .^ 2))
         df[lvl, :estimate_active] = sqrt(EstimatorInterior)
         df[lvl, :estimate_tail] = sqrt(EstimatorBoundary)
+        df[lvl, :residual] = totalResidual
         data["results"] = df
         data["solution"] = sol
         data["multi_indices"] = multi_indices
@@ -549,6 +551,26 @@ function produce_plots(;
         @info "convergence plot for $cols saved under $filename_plot"
     end
 
+    labels = ["decay $d" for d in decay]
+    basedata["decay"] = decay
+
+    ## residual plot
+    f_residual = Figure()
+    ax_residual = Axis(
+        f_residual[1, 1], xlabel = "ndofs", ylabel = "Residual of the ASGFEM solution", yscale = log10, xscale = log10,
+        xminorticksvisible = true, xminorgridvisible = true, yminorgridvisible = true, yminorticksvisible = true,
+        xminorticks = IntervalsBetween(10), yminorticks = IntervalsBetween(10)
+    )
+    for i in 1:length(decay)
+        df = data[i]["results"]
+        ndofs = df[!, :ndofs_space] .* df[!, :nmodes]
+        scatterlines!(ndofs, df[!, :residual], label = labels[i], color = colors[i], markersize = markersize, linewidth = 2)
+        axislegend(ax_residual, position = :lt, merge = true, labelsize = 16, orientation = :horizontal, nbanks = length(decay) + 1)
+    end
+    filename_plot = filename(basedata; add = "residuals_", folder = "plots", makepath = true) * ".svg"
+    CairoMakie.save(filename_plot, f_residual)
+    @info "plot of residuals saved under $filename_plot"
+
     ## bar plot
     max4mode = zeros(length(decay), plotM)
     cat = zeros(Int, plotM * length(decay))
@@ -574,7 +596,7 @@ function produce_plots(;
         cat, height,
         dodge = AbstractVector{Integer}(groups),
         color = colors[groups]
-    ) # ToDo: Narrower plot?
+    )
 
     # Legend
     labels = ["decay $d" for d in decay]
@@ -583,7 +605,6 @@ function produce_plots(;
 
     Legend(f_bar[1, 2], elements, labels, title)
 
-    basedata["decay"] = decay
     filename_plot = filename(basedata; add = "barplot_", folder = "plots", makepath = true) * ".svg"
 
     CairoMakie.save(filename_plot, f_bar)
