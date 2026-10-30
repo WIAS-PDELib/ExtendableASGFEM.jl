@@ -1,0 +1,275 @@
+####################
+### SOLVER STUFF ###
+####################
+
+struct StokesPrimal{Tv, MT, VT, GT}
+    A0::MT
+    Am::Vector{MT}
+    B::MT
+    G::GT
+    bdofs::Vector{Int}
+    nmodes::Int
+    vsize::Vector{Int}
+    couplings::Vector{Tuple{Int, Int, Int, Tv}}
+end
+
+function StokesPrimal(A0, Am, B, G, bdofs, nmodes, vsize)
+    Tv = eltype(G)
+    M = length(Am)
+    couplings = Tuple{Int, Int, Int, Tv}[]
+    for mu in 1:nmodes, nu in 1:nmodes, e in 1:M
+        g = G[(e - 1) * nmodes + mu, nu]
+        if g != 0
+            push!(couplings, (mu, nu, e, g))
+        end
+    end
+    return StokesPrimal{Tv, typeof(A0), typeof(couplings), typeof(G)}(
+        A0, Am, B, G, bdofs, nmodes, vsize, couplings
+    )
+end
+
+struct StokesPrimalPreconditioner{Tv, FAC}
+    LUS::FAC
+    DA::Vector{Tv}
+    temp::Vector{Tv}
+    bdofs::Vector{Int}
+    nmodes::Int
+    vsize::Vector{Int}
+end
+
+function StokesPrimalPreconditioner(
+        A0::ExtendableSparseMatrix{Tv, Ti},
+        B::ExtendableSparseMatrix{Tv, Ti},
+        bdofs,
+        nmodes,
+        vsize
+    ) where {Tv, Ti}
+    DA::Vector{Tv} = zeros(Tv, size(A0, 1))
+    for j in 1:length(DA)
+        DA[j] = A0[j, j]
+    end
+
+    # compute S = B inv(A_diag) B'
+    S = ExtendableSparseMatrix{Tv, Ti}(size(B, 2), size(B, 2))
+    cscmat::SparseMatrixCSC{Tv, Ti} = B.cscmatrix
+    rows::Vector{Ti} = rowvals(cscmat)
+    valsB::Vector{Tv} = cscmat.nzval
+    value::Tv = 0
+    row::Ti = 0
+    for i in 1:size(B, 2), j in 1:size(B, 2)
+        for r in nzrange(cscmat, i), r2 in nzrange(cscmat, j)
+            if rows[r] == rows[r2]
+                row = rows[r]
+                value = valsB[r] * valsB[r2] / DA[row]
+                _addnz(S, i, j, value, 1)
+            end
+        end
+    end
+
+    # compute LU factorisation of S
+    flush!(S)
+    LUS = lu(S.cscmatrix)
+
+    # temporary storage array for solver
+    temp = zeros(Tv, size(B, 2))
+
+    return StokesPrimalPreconditioner{Tv, typeof(LUS)}(LUS, DA, temp, bdofs, nmodes, vsize)
+end
+
+@inline LinearAlgebra.ldiv!(C::StokesPrimalPreconditioner, b) = ldiv!(b, C, b)
+@inline function LinearAlgebra.ldiv!(y, C::StokesPrimalPreconditioner{Tv, FAC}, b) where {Tv, FAC}
+    DA::Vector{Tv} = C.DA
+    temp::Vector{Tv} = C.temp
+    nmodes::Int = C.nmodes
+    bdofs = C.bdofs
+    vsize::Vector{Int} = C.vsize
+
+    for mu in 1:nmodes
+        # upper left block of preconditioner (I ⊗ A_diag)
+        a = (mu - 1) * vsize[1] + 1
+        c = mu * vsize[1]
+        for i in a:c
+            y[i] = b[i] / DA[i - a + 1]
+        end
+        a2 = nmodes * vsize[1] + (mu - 1) * vsize[2] + 1
+        c2 = nmodes * vsize[1] + mu * vsize[2]
+        if y !== b
+            ldiv!(view(y, a2:c2), C.LUS, view(b, a2:c2))
+        else
+            ldiv!(temp, C.LUS, view(b, a2:c2))
+            y[a2:c2] .= temp
+        end
+
+        for dof in bdofs
+            y[a + dof - 1] = 0
+        end
+    end
+
+    return y
+end
+
+@inline function LinearAlgebra.:\(C::StokesPrimalPreconditioner, b)
+    y = zero(b)
+    ldiv!(y, C, b)
+    return y
+end
+
+function LinearAlgebra.mul!(Ax::Vector{Tv}, S::StokesPrimal{Tv, MT, VT, GT}, x) where {Tv, MT, VT, GT}
+    fill!(Ax, 0)
+    Am::Vector{MT} = S.Am
+    vsize::Vector{Int} = S.vsize
+    nmodes::Int = S.nmodes
+    couplings = S.couplings
+    a::Int = 0
+    b::Int = 0
+    a2::Int = 0
+    b2::Int = 0
+    A0::MT = S.A0
+    B::MT = S.B
+
+    # deterministic part
+    for mu in 1:nmodes
+        a = (mu - 1) * vsize[1] + 1
+        b = mu * vsize[1]
+        a2 = nmodes * vsize[1] + (mu - 1) * vsize[2] + 1
+        b2 = nmodes * vsize[1] + mu * vsize[2]
+        addblock_matmul!(view(Ax, a:b), A0[1, 1], view(x, a:b))
+        addblock_matmul!(view(Ax, a:b), B[1, 1], view(x, a2:b2))
+        addblock_matmul!(view(Ax, a2:b2), B[1, 1], view(x, a:b); transposed = true)
+    end
+
+    # stochastic part
+    for (mu, nu, e, g) in couplings
+        a = (mu - 1) * vsize[1] + 1
+        b = mu * vsize[1]
+        a2 = (nu - 1) * vsize[1] + 1
+        b2 = nu * vsize[1]
+        addblock_matmul!(view(Ax, a:b), Am[e][1, 1], view(x, a2:b2); factor = g)
+    end
+
+    return Ax
+end
+
+Base.eltype(::StokesPrimal{Tv}) where {Tv} = Tv
+Base.size(S::StokesPrimal) = S.nmodes .* (size(S.A0.entries) .+ size(S.B.entries)[2])
+
+function solve_stokes_primal!(
+        SolutionSGFEM::SGFEVector, A0, Am, B, b0, G, nmodes, bdofs;
+        atol = 1.0e-14, rtol = 1.0e-14
+    )
+    ## create fullmatrix-free matrix evaluator
+    @info "Solving StochasticFEM iteratively and matrix-free (ndofs = $(length(SolutionSGFEM.entries)))..."
+    vsize = [SolutionSGFEM[1].FES.ndofs, SolutionSGFEM[nmodes + 1].FES.ndofs]
+
+    S = StokesPrimal(A0, Am, B, G, bdofs, nmodes, vsize)
+    @info "...initializing Preconditioner"
+    @time P = StokesPrimalPreconditioner(A0.entries, B.entries, bdofs, nmodes, vsize)
+
+    ## right-hand side
+    b = deepcopy(SolutionSGFEM)
+    addblock!(b[1], b0[1])
+
+    ## solve
+    addblock!(SolutionSGFEM[1], b0[1])
+    @info "...starting right-conditioned GMRES"
+    x, history = Krylov.gmres(S, b.entries, SolutionSGFEM.entries; ldiv = true, atol = atol, rtol = rtol, M = P)
+    SolutionSGFEM.entries .= x
+    @show history
+
+    # normalization of the pressure solution
+    xgrid = SolutionSGFEM[1].FES.xgrid
+    for i in 1:nmodes
+        pIntegrator = ItemIntegrator([id(1)])
+        pMean = sum(ExtendableFEM.evaluate(pIntegrator, [SolutionSGFEM.FEVectorBlocks[nmodes + i]])) /
+            sum(xgrid[CellVolumes])
+        view(SolutionSGFEM.FEVectorBlocks[nmodes + i]) .-= pMean
+    end
+
+    ## check residual
+    FES = SolutionSGFEM.FES_space
+    Ax = zero(SolutionSGFEM.entries)
+    mul!(Ax, S, SolutionSGFEM.entries)
+    residual = Ax - b.entries
+    a = FES[1].ndofs
+    b = FES[2].ndofs
+    for m in 1:nmodes
+        residual[a * (m - 1) .+ bdofs] .= 0
+        residual[a * nmodes + b * (m - 1) + 1] = 0
+    end
+    totalResidual = sqrt(sum(residual .^ 2))
+    @info "linear residual = $totalResidual"
+
+    return totalResidual
+end
+
+function solve_stokes_primal_full!(SolutionSGFEM::SGFEVector, A0, Am, B, b0, G, nmodes, bdofs)
+    M::Int = length(Am)
+    FES = SolutionSGFEM.FES_space
+    bigFES = Array{FESpace{Float64, Int32}, 1}([FES[1] for j in 1:nmodes])
+    append!(bigFES, [FES[2] for j in 1:nmodes])
+
+    bigS = FEMatrix(bigFES)
+    bigb = FEVector(bigFES)
+
+    for j in 1:nmodes
+        addblock!(bigS[j, j], A0[1, 1])
+        addblock!(bigS[j, nmodes + j], B[1, 1])
+        addblock!(bigS[nmodes + j, j], B[1, 1]; transpose = true)
+    end
+
+    ## right-hand side
+    addblock!(bigb[1], b0[1])
+
+    g::Float64 = 0
+    for j in 1:nmodes, k in 1:nmodes
+        for e in 1:M
+            g = G[(e - 1) * nmodes + j, k] # ⟨ ξ_m ψ_mi(j) ψ_mi(k) ⟩
+            if abs(g) > 1.0e-12
+                addblock!(bigS[j, k], Am[e][1, 1]; factor = g)
+            end
+        end
+    end
+    flush!(bigS.entries)
+
+    ## boundary condition for bigS
+    for dof in bdofs
+        bigb[1][dof] *= 1.0e60
+        for m in 1:nmodes
+            bigS[m, m][dof, dof] = 1.0e60
+        end
+    end
+    flush!(bigS.entries)
+
+    ## include integral mean condition for each pressure block
+    for m in 1:nmodes
+        bigS[nmodes + m, nmodes + m][1, 1] = 1.0e60
+        bigb[nmodes + m][1] = 0
+    end
+    flush!(bigS.entries)
+    #spy(bigS.entries)
+
+    @info "Solving StochasticFEM with full matrix..."
+    SolutionSGFEM.entries .= bigS.entries \ bigb.entries
+
+    ## normalization of the pressure solution
+    xgrid = SolutionSGFEM[1].FES.xgrid
+    for i in 1:nmodes
+        pIntegrator = ItemIntegrator([id(1)])
+        pMean = sum(ExtendableFEM.evaluate(pIntegrator, [SolutionSGFEM.FEVectorBlocks[nmodes + i]])) /
+            sum(xgrid[CellVolumes])
+        view(SolutionSGFEM.FEVectorBlocks[nmodes + i]) .-= pMean
+    end
+
+    ## calculate residual
+    residual = bigS.entries * SolutionSGFEM.entries .- bigb.entries
+    a = FES[1].ndofs
+    b = FES[2].ndofs
+    for m in 1:nmodes
+        residual[a * (m - 1) .+ bdofs] .= 0
+        residual[a * nmodes + b * (m - 1) + 1] = 0
+    end
+    totalResidual = sqrt(sum(residual .^ 2))
+    @info "linear residual = $totalResidual"
+
+    return totalResidual
+end

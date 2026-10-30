@@ -1,0 +1,10 @@
+{
+    "customLocalFormatters.formatters": [
+        {
+            "command": "julia --project=@runic -e \"using Runic; exit(Runic.main(ARGS))\"",
+            "languages": [
+                "julia"
+            ]
+        }
+    ]
+}

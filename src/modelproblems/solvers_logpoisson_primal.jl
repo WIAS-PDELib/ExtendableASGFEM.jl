@@ -189,7 +189,8 @@ function solve_logpoisson_primal!(SolutionSGFEM::SGFEVector, A, N0, Nm, b0, G, n
         ifcache = false,
     )
     prob = LinearProblem(Aop, b.entries)
-    sol = solve(prob;
+    sol = solve(
+        prob;
         alg = KrylovJL_GMRES(),
         abstol = atol,
         reltol = rtol,
@@ -213,7 +214,6 @@ function solve_logpoisson_primal_full!(SolutionSGFEM::SGFEVector, A, N0, N, b, G
     M::Int = length(N) # size(G,1) / nmodes
 
     FES = SolutionSGFEM.FES_space[1]
-    nmodes = num_multiindices(SolutionSGFEM)
     bigFES = [FES for j in 1:nmodes]
     x::Vector{Float64} = zeros(Float64, 2)
 

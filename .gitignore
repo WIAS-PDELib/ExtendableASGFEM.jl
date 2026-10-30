@@ -1,0 +1,7 @@
+# Folders
+.CondaPkg
+data
+plots
+
+# Files
+Manifest.toml
