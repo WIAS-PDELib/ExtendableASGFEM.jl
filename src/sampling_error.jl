@@ -345,7 +345,7 @@ function apply_error_integrators_from_metrics!(
             set_sample!(SolutionSGFEM, y)
             for metric in metrics
                 sol = ExtendableFEM.evaluate(metric["integrator"](y), metric["solution"])
-                error_per_run[metric["name"]][m + 1, s] = sqrt(sum(view(sol, 1, :))) # Hier Abweichung: Keine Abhängigkeit von energy_norm!
+                error_per_run[metric["name"]][m + 1, s] = sum(view(sol, 1, :)) # Hier Abweichung: Keine Abhängigkeit von energy_norm!
             end
         end
 
@@ -373,8 +373,8 @@ function apply_error_integrators_from_metrics!(
         end
     end
 
-    return [error["$(name)_weighted"] for name in metric_names]...,
-        [error["$(name)_uniform"] for name in metric_names]...
+    return [sqrt.(error["$(name)_weighted"]) for name in metric_names]...,
+        [sqrt.(error["$(name)_uniform"]) for name in metric_names]...
 end
 
 function calculate_sampling_error_2(

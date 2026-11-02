@@ -21,7 +21,7 @@ function deterministic_problem(
         reconstruct = false,
         boundary_regions = 1:4,
         bonus_quadorder_a = 2,
-        bonus_quadorder_f = 0,
+        bonus_quadorder_f = 4,
     )
     get_ν! = get_a!(C)
     ν = zeros(1)

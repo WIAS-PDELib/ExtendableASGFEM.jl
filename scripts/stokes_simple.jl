@@ -132,7 +132,7 @@ end
 function create_plot(
         xdata, ydata; xscale = identity, yscale = identity, xlabel, ylabel,
         title, position = :rt, plot_path, labels::Vector{LaTeXStrings.LaTeXString},
-        show_optimal_rate = false, reference_lines_scaling = [1.0, 1.0, 1.0, 1.0]
+        show_optimal_rate = false, reference_lines_scaling = [1.0, 1.0, 1.0]
     )
     colors = Makie.wong_colors()
     p = Makie.Figure(fontsize = 18, size = (900, 600))
@@ -149,15 +149,15 @@ function create_plot(
         )
     end
     if show_optimal_rate
-        linestyles = [:solid, :dot, :dashdot, :dashdotdot]
+        linestyles = [:dot, :dashdot, :dashdotdot]
         for (i, linestyle) in enumerate(linestyles)
             if i > length(reference_lines_scaling)
                 break
             end
             scatterlines!(
                 xdata, reference_lines_scaling[i] * xdata .^ (-i / 2), color = :gray,
-                label = L"\mathcal{O}(h^{%$(-round(i/2, sigdigits=2))})", markersize = 0,
-                linewidth = 2, linestyle = linestyle,
+                label = i == 1 ? L"\mathcal{O}(h)" : L"\mathcal{O}(h^{%$(round(Int, i))})",
+                markersize = 0, linewidth = 2, linestyle = linestyle,
             )
         end
     end
@@ -397,7 +397,7 @@ function runner_convergence_plot(rc::RunConfiguration; kwargs...)
     ν = α * get(kwargs, :ν, [1.0, 0.2])
     reconstruct = get(kwargs, :reconstruct, false)
     FETypes = get(kwargs, :FETypes, (H1P2{2, 2}, H1P1{1}))
-    nrefs_max = get(kwargs, :nrefs_max, 5)
+    nrefs_max = get(kwargs, :nrefs_max, 6)
     reference_lines_scaling = get(kwargs, :reference_lines_scaling, [1.0, 1.0, 1.0, 1.0])
 
     SCType = rc.stochastic_configuration.SCType
@@ -426,6 +426,7 @@ function runner_convergence_plot(rc::RunConfiguration; kwargs...)
         l2stress_error, l2u_error, l2p_error = calculate_sampling_error_2(
             SolutionSGFEM, exact_f!, C; problem = StokesProblemPrimal, nsamples = 25, order = 2,
             metrics_configuration = stokes_metrics_configuration, dimensionwise_error = true,
+            bonus_quadorder_f = 5, reconstruct = reconstruct,
         )
 
         push!(ndofs, (FES[1].ndofs + FES[2].ndofs) * length(multi_indices))
@@ -511,12 +512,12 @@ run_configuration_convergence_plot_complex_example = RunConfiguration(
     [
         Dict(
             :α => 10.0^(-4), :FETypes => (H1BR{2}, L2P0{1}),
-            :reconstruct => false, :reference_lines_scaling => [1.0, 4 * 10.0^3],
+            :reconstruct => false, :reference_lines_scaling => [0.5, 2*10^3],
             :plot_path => "plots/convergence_plot_for_complex_example_non_pressure_robust.svg"
         ),
         Dict(
             :α => 10.0^(-4), :FETypes => (H1BR{2}, L2P0{1}),
-            :reconstruct => true, :reference_lines_scaling => [1.0, 9 * 10.0^3, 7 * 10.0^3, 5 * 10^4],
+            :reconstruct => true, :reference_lines_scaling => [0.25, 0.25],
             :plot_path => "plots/convergence_plot_for_complex_example_pressure_robust.svg"
         ),
     ]
