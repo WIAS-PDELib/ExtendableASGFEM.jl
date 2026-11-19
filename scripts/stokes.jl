@@ -51,7 +51,40 @@ function prepare_data_for_complex_example(; α = 10^4, ν = 1.0, kwargs...)
     eval_u! = build_function(0 * [x1, x2], x1, x2, expression = Val{false})[2]
     eval_∇p! = build_function(∇p, x1, x2, expression = Val{false})
 
-    return (result, x) -> eval_f!(result, x...), (result, x) -> (result[1] = eval_f_curl(x...)), (result, x) -> eval_u!(result, x...), (result, x) -> eval_∇p!(result, x...)
+    return (result, x) -> eval_f!(result, x...),
+        (result, x) -> (result[1] = eval_f_curl(x...)),
+        (result, x) -> eval_u!(result, x...),
+        (result, x) -> eval_∇p!(result, x...)
+end
+
+function prepare_data_for_complex_example_2(; ν = 1.0, kwargs...)
+    @variables x1, x2
+
+    λ = 0.5 / sqrt(ν)
+    ϕ = x1^2*x2^2*(1 - exp(λ*(x1-1)))^2*(1-exp(λ*(x2-1)))^2
+    pm = 5.52439138216
+    p = exp(x1+x2) - pm
+    ∇p = Symbolics.gradient(p, [x1, x2])
+
+    curl_ϕ = [-∇ϕ[2], ∇ϕ[1]]
+    ∇u = Symbolics.jacobian(curl_ϕ, [x1, x2])
+    Δu = [
+        Symbolics.derivative(∇u[1, 1], x1) + Symbolics.derivative(∇u[1, 2], x2),
+        Symbolics.derivative(∇u[2, 1], x1) + Symbolics.derivative(∇u[2, 2], x2),
+    ]
+
+    f = - ν * Δu + ∇p
+    curl_f = Symbolics.derivative(f[2], x1) - Symbolics.derivative(f[1], x2)
+
+    eval_f! = build_function(f, x1, x2, expression = Val{false})[2]
+    eval_f_curl = build_function(curl_f, x1, x2, expression = Val{false})
+    eval_u! = build_function(0 * [x1, x2], x1, x2, expression = Val{false})[2]
+    eval_∇p! = build_function(∇p, x1, x2, expression = Val{false})
+
+    return (result, x) -> eval_f!(result, x...),
+        (result, x) -> (result[1] = eval_f_curl(x...)),
+        (result, x) -> eval_u!(result, x...),
+        (result, x) -> eval_∇p!(result, x...)
 end
 
 function prepare_data_for_simple_example(; kwargs...)
@@ -91,7 +124,7 @@ default_args = Dict(
     "domain" => "square",
     "order" => 1,
     "problem" => StokesProblemPrimal,
-    "prepare_data" => prepare_data_for_complex_example,
+    "prepare_data" => prepare_data_for_complex_example_2,
     "C" => StochasticCoefficientCosinus,
     "decay" => 2,
     "mean" => 1,
