@@ -22,7 +22,7 @@ using ExtendableGrids: ExtendableGrids, Adjacency, BFaceFaces, CellFaces,
     SerialVariableTargetAdjacency, Triangle2D,
     UniqueCellGeometries, VariableTargetAdjacency, append!,
     atranspose, eval_trafo!, interpolate!,
-    max_num_targets_per_source, num_cells, num_nodes,
+    max_num_targets_per_source, num_cells,
     num_sources, num_targets, unique, update_trafo!
 using ExtendableSparse: ExtendableSparse, ExtendableSparseMatrix, flush!
 using GridVisualize: GridVisualize, GridVisualizer, scalarplot, scalarplot!, reveal
