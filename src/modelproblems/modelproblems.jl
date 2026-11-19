@@ -29,3 +29,4 @@ end
 include("logpoisson_primal.jl")
 include("logpoisson_dual.jl")
 include("poisson_primal.jl")
+include("stokes_primal.jl")

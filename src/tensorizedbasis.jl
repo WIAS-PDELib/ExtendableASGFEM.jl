@@ -86,7 +86,8 @@ function sample_distribution(TB::TensorizedBasis, nsamples; M = maxlength_multii
     Samples::Array{Float64, 2} = zeros(Float64, M, nsamples)
     Random.seed!(123)
     rand!(dist, Samples)
-    weights = [prod([pdf(dist, Samples[j, s]) for j in 1:Mweights]) for s in 1:nsamples]
+    log_pdf = (j, s) -> log.(pdf(dist, Samples[j, s]))
+    weights = [exp.(sum([log_pdf(j, s) for j in 1:Mweights])) for s in 1:nsamples]
     return Samples, weights
 end
 

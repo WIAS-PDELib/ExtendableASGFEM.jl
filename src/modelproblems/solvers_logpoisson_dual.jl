@@ -187,7 +187,8 @@ function solve_logpoisson_dual!(SolutionSGFEM::SGFEVector, A, B, N0, Nm, b0, G, 
         ifcache = false,
     )
     prob = LinearProblem(Aop, b.entries)
-    sol = solve(prob;
+    sol = solve(
+        prob;
         alg = KrylovJL_GMRES(),
         abstol = atol,
         reltol = rtol,

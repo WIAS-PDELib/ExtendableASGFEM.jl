@@ -24,6 +24,8 @@ struct SGFEVector{T, Tv, Ti, ONBType <: ONBasis, MIType}
     entries::Array{T, 1}                         ## complete coefficient vector
     last_sample::Array{Tv, 1}                    ## last sample used for evaluation
     FEV::FEVector{T, Tv, Ti}                      ## Vector used for evaluating
+    unames::Vector{Any}                         ## stored tags
+    indices4unames::Dict{Any, Ti}               ## mapping between tag and vector index
 end
 
 """
@@ -91,6 +93,7 @@ function SGFEVector(FES::Array{<:FESpace{Tv, Ti}, 1}, TB::TensorizedBasis{Tv, ON
     feblocks = Array{FEVectorBlock{T, Tv, Ti}, 1}(undef, 0)
     entries = zeros(T, 0)
     nunknowns = length(FES)
+    indices4unames = Dict([repr(unames[i]) => i for i in 1:nunknowns])
     for j in 1:length(FES)
         fes = FES[j]
         ndofs = fes.ndofs
@@ -102,7 +105,9 @@ function SGFEVector(FES::Array{<:FESpace{Tv, Ti}, 1}, TB::TensorizedBasis{Tv, ON
         end
     end
 
-    return SGFEVector{T, Tv, Ti, ONBType, MIType}(FES, TB, active_modes, length4modes, feblocks, entries, zeros(Tv, maxlength_multiindices(TB)), FEVector(FES))
+    return SGFEVector{T, Tv, Ti, ONBType, MIType}(
+        FES, TB, active_modes, length4modes, feblocks, entries, zeros(Tv, maxlength_multiindices(TB)), FEVector(FES), unames, indices4unames
+    )
 end
 
 function SGFEVector(FES::FESpace{Tv, Ti}, TB::TensorizedBasis{Tv}; kwargs...) where {Tv, Ti}
@@ -122,7 +127,8 @@ $(TYPEDSIGNATURES)
 returns the FEVectorBlock for the `i`-th stochastic mode of the `u`-th unknown
 
 """
-Base.getindex(SGFEV::SGFEVector, u::Int, i::Int) = SGFEV.FEVectorBlocks[(u - 1) * length(SGFEV.active_modes) + i]
+Base.getindex(SGFEV::SGFEVector, u::Any, i::Int) = SGFEV.FEVectorBlocks[((u isa Number ? u : SGFEV.indices4unames[repr(u)]) - 1) * length(SGFEV.active_modes) + i]
+
 """
 $(TYPEDSIGNATURES)
 

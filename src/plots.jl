@@ -17,11 +17,11 @@ Plot scalar plots of the stochastic modes of an `SGFEVector` solution using `Ext
 plot_modes(sol; Plotter=GLMakie, ncols=4, sort=true)
 ```
 """
-function plot_modes(sol::SGFEVector; unknown = 1, Plotter = nothing, nmodes = num_multiindices(sol.TB), ncols = 3, width = 400 * ncols, sort = false)
-    nrows = Int(ceil(nmodes / ncols))
+function plot_modes(sol::SGFEVector; unknown = 1, Plotter = nothing, nmodes = num_multiindices(sol.TB), ncols = 3, width = 400 * ncols, sort = false, normalizePattern::Union{Vector{String}, Vector{Int}, Nothing} = nothing)
     FES = sol.FES_space
     nunknowns = length(FES)
     TensorBasis = sol.TB
+    ONBnorms = sol.TB.ONB.norms
     norm4modes = norms(sol)
     nmodes = TensorBasis.nmodes
     if sort && nunknowns == 1
@@ -33,10 +33,23 @@ function plot_modes(sol::SGFEVector; unknown = 1, Plotter = nothing, nmodes = nu
     for u in 2:nunknowns
         append!(modes, (u - 1) * nmodes .+ modes)
     end
-    p = plot([id(j) for j in modes], [sol[j] for j in modes]; Plotter = Plotter)
+    sol4plot = deepcopy(sol)
+    if !isnothing(normalizePattern) && !isempty(normalizePattern)
+        multi_indices = TensorBasis.multi_indices
+        for uname in normalizePattern
+            for j in 1:nmodes
+                view(sol4plot[uname, j]) ./= norm_for_multi_index(ONBnorms, multi_indices[j])
+            end
+        end
+    end
+    p = plot([id(j) for j in modes], [sol4plot[j] for j in modes]; Plotter = Plotter)
     return p
 end
 
+function norm_for_multi_index(ONBnorms::Array{Float64, 1}, index::Array{Int, 1})
+    log_ONBnorms = log.(ONBnorms)
+    return exp(sum([log_ONBnorms[i + 1] for i in index]))
+end
 
 function plot_basis(TB::TensorizedBasis; kwargs...)
     return plot_basis(TB.ONB; kwargs...)
@@ -58,6 +71,6 @@ function plot_basis(ONB::ONBasis{T, OBT, npoly, nquad}; Plotter = nothing, resol
     for j in 1:npoly
         scalarplot!(p[1, 1], xgrid, vals4xref; clear = false, Plotter = Plotter, label = "$j", xlimits = (-1, 1), limits = (-4, 4))
     end
-    reveal(p)
+    GridVisualize.reveal(p)
     return
 end

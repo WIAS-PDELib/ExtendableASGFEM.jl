@@ -3,7 +3,7 @@
 ([source code](SOURCE_URL))
 
 runs AFEM loop for stochastic Poisson problem
- 
+
 usage:
 - run experiment: run(; problem = problem, kwargs...)
 - load results  : show_results(; kwargs...)
